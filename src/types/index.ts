@@ -72,22 +72,11 @@ export interface MechanicProfile {
 }
 
 export interface BreakdownRequest {
-  id: string;
-  userId: string;
-  vehicleIds: string[];
-  locationLatitude: number;
-  locationLongitude: number;
+  currentLocationLat: number;
+  currentLocationLng: number;
   address?: string;
   issueType: IssueType;
   description: string;
-  mechanicId?: string;
-  status: RequestStatus;
-  partsUsed?: string[];
-  laborCharge?: number;
-  partsCharge?: number;
-  finalAmount?: number;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface LoginRequest {
@@ -115,14 +104,14 @@ export interface ApiResponse<T> {
 }
 
 export interface MechanicRegistrationRequest {
-  licenseNumber: string;
-  aadhaarNumber: string;
+  currentLocationLat: number;
+  currentLocationLng: number;
 }
 
 export interface MechanicVerificationRequest {
-  mechanicId: string;
-  aadhaarVerified: boolean;
-  policeVerificationDone: boolean;
+  licenseNumber: string;
+  aadhaarNumber: string;
+  profileImageUrl: string;
 }
 
 export interface AddVehicleRequest {

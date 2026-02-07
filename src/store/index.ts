@@ -28,11 +28,11 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
           const response = await authApi.login({ email, password });
           
-          localStorage.setItem('token', response.token);
+          localStorage.setItem('token', response.data?.token || '');
           
           set({ 
-            user: response.user, 
-            token: response.token, 
+            user: response.data?.user, 
+            token: response.data?.token, 
             isAuthenticated: true,
             isLoading: false 
           });
@@ -56,11 +56,11 @@ export const useAuthStore = create<AuthState>()(
             role: role as any
           });
           
-          localStorage.setItem('token', response.token);
+          localStorage.setItem('token', response.data?.token || '');
           
           set({ 
-            user: response.user, 
-            token: response.token, 
+            user: response.data?.user, 
+            token: response.data?.token, 
             isAuthenticated: true,
             isLoading: false 
           });

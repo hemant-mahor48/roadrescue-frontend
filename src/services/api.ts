@@ -47,18 +47,18 @@ api.interceptors.response.use(
 
 // Auth APIs
 export const authApi = {
-  login: async (data: LoginRequest): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('v1/auth/login', data);
+  login: async (data: LoginRequest): Promise<ApiResponse<AuthResponse>> => {
+    const response = await api.post<ApiResponse<AuthResponse>>('v1/auth/login', data);
     return response.data;
   },
 
-  register: async (data: RegisterRequest): Promise<AuthResponse> => {
-    const response = await api.post<AuthResponse>('v1/auth/register', {...data, role: data.role || 'CUSTOMER' });
+  register: async (data: RegisterRequest): Promise<ApiResponse<AuthResponse>> => {
+    const response = await api.post<ApiResponse<AuthResponse>>('v1/auth/register', {...data, role: data.role || 'CUSTOMER' });
     return response.data;
   },
 
-  validateToken: async (): Promise<ApiResponse<User>> => {
-    const response = await api.get<ApiResponse<User>>('v1/auth/validate');
+  validateToken: async (): Promise<Boolean> => {
+    const response = await api.get<Boolean>('v1/auth/validate');
     return response.data;
   },
 };
@@ -88,14 +88,33 @@ export const userApi = {
 
 // Mechanic APIs
 export const mechanicApi = {
-  registerAsMechanic: async (data: MechanicRegistrationRequest): Promise<ApiResponse<MechanicProfile>> => {
+  // Step 1: Register mechanic with location
+  registerAsMechanic: async (data: { currentLocationLat: number; currentLocationLng: number }): Promise<ApiResponse<MechanicProfile>> => {
     try {
-      console.log('Making API call to /mechanics/register with data:', data);
-      const response = await api.post<ApiResponse<MechanicProfile>>('v1/mechanics/register', data);
-      console.log('API response:', response);
+      const response = await api.post<ApiResponse<MechanicProfile>>('v1/mechanics/register', {
+        currentLocationLat: data.currentLocationLat,
+        currentLocationLng: data.currentLocationLng,
+      });
       return response.data;
     } catch (error) {
-      console.error('API call failed:', error);
+      throw error;
+    }
+  },
+
+  // Step 2: Submit verification documents
+  submitVerification: async (data: { 
+    licenseNumber: string; 
+    aadhaarNumber: string; 
+    profileImageUrl: string 
+  }): Promise<ApiResponse<MechanicProfile>> => {
+    try {
+      const response = await api.post<ApiResponse<MechanicProfile>>('v1/mechanics/verification', {
+        licenseNumber: data.licenseNumber,
+        aadhaarNumber: data.aadhaarNumber,
+        profileImageUrl: data.profileImageUrl,
+      });
+      return response.data;
+    } catch (error) {
       throw error;
     }
   },
@@ -112,15 +131,6 @@ export const mechanicApi = {
 
   updateLocation: async (data: LocationUpdate): Promise<ApiResponse<void>> => {
     const response = await api.post<ApiResponse<void>>('v1/mechanics/location', data);
-    return response.data;
-  },
-
-  verifyMechanic: async (mechanicId: string, verified: boolean): Promise<ApiResponse<void>> => {
-    const response = await api.post<ApiResponse<void>>('v1/mechanics/verification', {
-      mechanicId,
-      aadhaarVerified: verified,
-      policeVerificationDone: verified,
-    });
     return response.data;
   },
 };
