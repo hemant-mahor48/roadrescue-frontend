@@ -1,6 +1,3 @@
-<<<<<<< HEAD
-# roadrescue-frontend
-=======
 # 🚗 RoadRescue Frontend
 
 A modern, feature-rich React + TypeScript frontend for the RoadRescue roadside assistance platform.
@@ -314,4 +311,3 @@ This project is part of the RoadRescue platform.
 ---
 
 Built with ❤️ using React, TypeScript, Tailwind CSS, and Framer Motion
->>>>>>> f8fd1546653b1988674fbaf670e403f4fba1d953
