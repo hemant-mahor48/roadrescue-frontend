@@ -23,11 +23,11 @@ export enum RequestStatus {
 }
 
 export enum IssueType {
-  FLAT_TIRE = 'FLAT_TIRE',
-  BATTERY_DEAD = 'BATTERY_DEAD',
-  ENGINE_PROBLEM = 'ENGINE_PROBLEM',
-  FUEL_SHORTAGE = 'FUEL_SHORTAGE',
-  BRAKE_ISSUE = 'BRAKE_ISSUE',
+  TYRE_PUNCTURE = 'TYRE_PUNCTURE',
+  BATTERY_ISSUE = 'BATTERY_ISSUE',
+  ENGINE_FAILURE = 'ENGINE_FAILURE',
+  FUEL_EMPTY = 'FUEL_EMPTY',
+  LOCKOUT = 'LOCKOUT',
   ACCIDENT = 'ACCIDENT',
   OTHER = 'OTHER',
 }
@@ -72,11 +72,22 @@ export interface MechanicProfile {
 }
 
 export interface BreakdownRequest {
-  currentLocationLat: number;
-  currentLocationLng: number;
+  id: string;
+  userId: string;
+  vehicleIds: string[];
+  locationLatitude: number;
+  locationLongitude: number;
   address?: string;
   issueType: IssueType;
   description: string;
+  mechanicId?: string;
+  status: RequestStatus;
+  partsUsed?: string[];
+  laborCharge?: number;
+  partsCharge?: number;
+  finalAmount?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface LoginRequest {

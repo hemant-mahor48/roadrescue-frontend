@@ -27,16 +27,16 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true });
           const response = await authApi.login({ email, password });
-          
+
           localStorage.setItem('token', response.data?.token || '');
-          
-          set({ 
-            user: response.data?.user, 
-            token: response.data?.token, 
+
+          set({
+            user: response.data?.user,
+            token: response.data?.token,
             isAuthenticated: true,
-            isLoading: false 
+            isLoading: false
           });
-          
+
           toast.success('Login successful!');
         } catch (error: any) {
           set({ isLoading: false });
@@ -48,27 +48,34 @@ export const useAuthStore = create<AuthState>()(
       register: async (email, phone, password, fullName, role = 'CUSTOMER') => {
         try {
           set({ isLoading: true });
-          const response = await authApi.register({ 
-            email, 
-            phone, 
-            password, 
+          const registerResponse = await authApi.register({
+            email,
+            phone,
+            password,
             fullName,
             role: role as any
           });
-          
-          localStorage.setItem('token', response.data?.token || '');
-          
-          set({ 
-            user: response.data?.user, 
-            token: response.data?.token, 
+
+          if (!registerResponse.success) {
+            throw new Error(registerResponse.message || 'Registration failed');
+          }
+
+          // After successful registration, login to get token and user
+          const loginResponse = await authApi.login({ email, password });
+
+          localStorage.setItem('token', loginResponse.data?.token || '');
+
+          set({
+            user: loginResponse.data?.user,
+            token: loginResponse.data?.token,
             isAuthenticated: true,
-            isLoading: false 
+            isLoading: false
           });
-          
+
           toast.success('Registration successful!');
         } catch (error: any) {
           set({ isLoading: false });
-          toast.error(error.response?.data?.message || 'Registration failed');
+          toast.error(error.response?.data?.message || error.message || 'Registration failed');
           throw error;
         }
       },
@@ -114,17 +121,17 @@ export const useRequestStore = create<RequestState>((set) => ({
 
   setCurrentRequest: (request) => set({ currentRequest: request }),
 
-  addRequest: (request) => set((state) => ({ 
+  addRequest: (request) => set((state) => ({
     activeRequests: [request, ...state.activeRequests],
     currentRequest: request
   })),
 
   updateRequest: (id, updates) => set((state) => ({
-    activeRequests: state.activeRequests.map(req => 
+    activeRequests: state.activeRequests.map(req =>
       req.id === id ? { ...req, ...updates } : req
     ),
-    currentRequest: state.currentRequest?.id === id 
-      ? { ...state.currentRequest, ...updates } 
+    currentRequest: state.currentRequest?.id === id
+      ? { ...state.currentRequest, ...updates }
       : state.currentRequest
   })),
 }));

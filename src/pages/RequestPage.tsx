@@ -10,7 +10,7 @@ const RequestPage = () => {
   const [useCurrentLocation, setUseCurrentLocation] = useState(true);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
   const [formData, setFormData] = useState({
-    issueType: IssueType.FLAT_TIRE,
+    issueType: IssueType.TYRE_PUNCTURE,
     description: '',
     locationLatitude: 0,
     locationLongitude: 0,
@@ -69,9 +69,13 @@ const RequestPage = () => {
     setIsSubmitting(true);
 
     try {
+      // Map frontend field names to backend expected names
       const response = await requestApi.createRequest({
-        ...formData,
-        vehicleIds: [],
+        currentLocationLat: formData.locationLatitude,
+        currentLocationLng: formData.locationLongitude,
+        issueType: formData.issueType,
+        description: formData.description,
+        address: formData.address,
       });
 
       if (response.success) {
@@ -83,6 +87,19 @@ const RequestPage = () => {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const getIssueTypeLabel = (type: IssueType): string => {
+    const labels: Record<IssueType, string> = {
+      [IssueType.TYRE_PUNCTURE]: 'Tyre Puncture',
+      [IssueType.BATTERY_ISSUE]: 'Battery Issue',
+      [IssueType.ENGINE_FAILURE]: 'Engine Failure',
+      [IssueType.FUEL_EMPTY]: 'Fuel Empty',
+      [IssueType.LOCKOUT]: 'Lockout',
+      [IssueType.ACCIDENT]: 'Accident',
+      [IssueType.OTHER]: 'Other',
+    };
+    return labels[type];
   };
 
   return (
@@ -106,7 +123,7 @@ const RequestPage = () => {
               >
                 {Object.values(IssueType).map((type) => (
                   <option key={type} value={type}>
-                    {type.replace('_', ' ')}
+                    {getIssueTypeLabel(type)}
                   </option>
                 ))}
               </select>
@@ -126,7 +143,7 @@ const RequestPage = () => {
             {/* Location Type Toggle */}
             <div className="space-y-4">
               <label className="block text-sm font-medium mb-2">Location</label>
-              
+
               <div className="flex items-center space-x-4 mb-4">
                 <button
                   type="button"
@@ -134,11 +151,10 @@ const RequestPage = () => {
                     setUseCurrentLocation(true);
                     getCurrentLocation();
                   }}
-                  className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all ${
-                    useCurrentLocation 
-                      ? 'border-primary-500 bg-primary-500/10 text-white' 
-                      : 'border-dark-700 bg-dark-800 text-dark-400'
-                  }`}
+                  className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all ${useCurrentLocation
+                    ? 'border-primary-500 bg-primary-500/10 text-white'
+                    : 'border-dark-700 bg-dark-800 text-dark-400'
+                    }`}
                 >
                   <Crosshair className="w-5 h-5 mx-auto mb-1" />
                   <span className="text-sm font-medium">Current Location</span>
@@ -147,11 +163,10 @@ const RequestPage = () => {
                 <button
                   type="button"
                   onClick={() => setUseCurrentLocation(false)}
-                  className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all ${
-                    !useCurrentLocation 
-                      ? 'border-primary-500 bg-primary-500/10 text-white' 
-                      : 'border-dark-700 bg-dark-800 text-dark-400'
-                  }`}
+                  className={`flex-1 px-4 py-3 rounded-xl border-2 transition-all ${!useCurrentLocation
+                    ? 'border-primary-500 bg-primary-500/10 text-white'
+                    : 'border-dark-700 bg-dark-800 text-dark-400'
+                    }`}
                 >
                   <MapPin className="w-5 h-5 mx-auto mb-1" />
                   <span className="text-sm font-medium">Custom Location</span>

@@ -1,12 +1,9 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { 
-  MapPin, 
-  Plus, 
-  Car, 
-  Clock, 
-  CheckCircle,
+import {
+  MapPin,
+  Plus,
   AlertCircle,
   LogOut,
   User,
@@ -15,8 +12,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore, useRequestStore } from '../store';
 import { requestApi } from '../services/api';
-import { RequestStatus } from '../types';
-import toast from 'react-hot-toast';
+import { IssueType, RequestStatus } from '../types';
 
 const CustomerDashboard = () => {
   const { user, logout } = useAuthStore();
@@ -54,6 +50,19 @@ const CustomerDashboard = () => {
     return colors[status] || 'bg-gray-500/20 text-gray-500 border-gray-500/30';
   };
 
+  const getIssueTypeLabel = (type: IssueType): string => {
+    const labels: Record<IssueType, string> = {
+      [IssueType.TYRE_PUNCTURE]: 'Tyre Puncture',
+      [IssueType.BATTERY_ISSUE]: 'Battery Issue',
+      [IssueType.ENGINE_FAILURE]: 'Engine Failure',
+      [IssueType.FUEL_EMPTY]: 'Fuel Empty',
+      [IssueType.LOCKOUT]: 'Lockout',
+      [IssueType.ACCIDENT]: 'Accident',
+      [IssueType.OTHER]: 'Other',
+    };
+    return labels[type];
+  };
+
   return (
     <div className="min-h-screen">
       {/* Header */}
@@ -67,7 +76,7 @@ const CustomerDashboard = () => {
               RoadRescue
             </span>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <Link to="/profile" className="btn-ghost flex items-center space-x-2">
               <User className="w-4 h-4" />
@@ -82,7 +91,7 @@ const CustomerDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Welcome Section */}
-        <motion.div 
+        <motion.div
           className="mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -96,7 +105,7 @@ const CustomerDashboard = () => {
         {/* Quick Actions */}
         <div className="grid md:grid-cols-2 gap-6 mb-8">
           <Link to="/request/new">
-            <motion.div 
+            <motion.div
               className="glass-card p-8 hover:scale-105 transition-transform cursor-pointer group"
               whileHover={{ scale: 1.02 }}
             >
@@ -113,7 +122,7 @@ const CustomerDashboard = () => {
           </Link>
 
           <Link to="/become-mechanic">
-            <motion.div 
+            <motion.div
               className="glass-card p-8 hover:scale-105 transition-transform cursor-pointer group"
               whileHover={{ scale: 1.02 }}
             >
@@ -172,10 +181,10 @@ const CustomerDashboard = () => {
                           {new Date(request.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                      
-                      <h3 className="text-lg font-bold mb-2">{request.issueType.replace('_', ' ')}</h3>
+
+                      <h3 className="text-lg font-bold mb-2">{getIssueTypeLabel(request.issueType)}</h3>
                       <p className="text-dark-400 mb-3">{request.description}</p>
-                      
+
                       <div className="flex items-center space-x-4 text-sm text-dark-400">
                         <div className="flex items-center space-x-1">
                           <MapPin className="w-4 h-4" />
