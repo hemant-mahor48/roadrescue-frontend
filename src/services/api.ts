@@ -22,7 +22,7 @@ const api = axios.create({
 // Request interceptor to add token
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = sessionStorage.getItem('token');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -36,7 +36,7 @@ api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      localStorage.removeItem('token');
+      sessionStorage.removeItem('token');
       window.location.href = '/login';
     }
     return Promise.reject(error);
@@ -158,8 +158,8 @@ export const requestApi = {
     return response.data;
   },
 
-  cancelRequest: async (id: string): Promise<ApiResponse<void>> => {
-    const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/cancel`);
+  rejectRequest: async (id: string): Promise<ApiResponse<void>> => {
+    const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/reject`);
     return response.data;
   },
 

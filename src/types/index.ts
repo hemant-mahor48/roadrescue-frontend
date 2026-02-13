@@ -105,7 +105,7 @@ export interface RegisterRequest {
 
 export interface AuthResponse {
   token: string;
-  user: User;
+  userDTO: User;
 }
 
 export interface ApiResponse<T> {

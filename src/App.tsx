@@ -43,16 +43,20 @@ function App() {
           {/* Public Routes */}
           <Route path="/" element={<LandingPage />} />
           <Route path="/login" element={
-            isAuthenticated ? <Navigate to={user?.role === 'MECHANIC' ? '/mechanic/dashboard' : '/dashboard'} /> : <LoginPage />
+            isAuthenticated ? <Navigate to={user?.role === 'MECHANIC' || user?.mechanicProfile ? '/mechanic/dashboard' : '/dashboard'} /> : <LoginPage />
           } />
           <Route path="/register" element={
-            isAuthenticated ? <Navigate to={user?.role === 'MECHANIC' ? '/mechanic/dashboard' : '/dashboard'} /> : <RegisterPage />
+            isAuthenticated ? <Navigate to={user?.role === 'MECHANIC' || user?.mechanicProfile ? '/mechanic/dashboard' : '/dashboard'} /> : <RegisterPage />
           } />
 
           {/* Protected Customer Routes */}
           <Route path="/dashboard" element={
             <PrivateRoute>
-              <CustomerDashboard />
+              {user?.role === 'MECHANIC' || user?.mechanicProfile ? (
+                <Navigate to="/mechanic/dashboard" replace />
+              ) : (
+                <CustomerDashboard />
+              )}
             </PrivateRoute>
           } />
           <Route path="/request/new" element={

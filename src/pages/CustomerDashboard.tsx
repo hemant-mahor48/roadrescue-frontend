@@ -10,15 +10,18 @@ import {
   Wrench,
   TrendingUp
 } from 'lucide-react';
-import { useAuthStore, useRequestStore } from '../store';
-import { requestApi } from '../services/api';
-import { IssueType, RequestStatus } from '../types';
+import { useAuthStore /*, useRequestStore */ } from '../store';
+// import { requestApi } from '../services/api';
+// import { IssueType, RequestStatus } from '../types';
+import NotificationBell from '../components/NotificationBell';
 
 const CustomerDashboard = () => {
   const { user, logout } = useAuthStore();
-  const { activeRequests, setActiveRequests } = useRequestStore();
-  const [isLoading, setIsLoading] = useState(true);
 
+  // const { activeRequests, setActiveRequests } = useRequestStore();
+  // const [isLoading, setIsLoading] = useState(true);
+
+  /*
   useEffect(() => {
     fetchRequests();
   }, []);
@@ -35,7 +38,9 @@ const CustomerDashboard = () => {
       setIsLoading(false);
     }
   };
+  */
 
+  /*
   const getStatusColor = (status: RequestStatus) => {
     const colors = {
       [RequestStatus.PENDING]: 'bg-yellow-500/20 text-yellow-500 border-yellow-500/30',
@@ -62,6 +67,7 @@ const CustomerDashboard = () => {
     };
     return labels[type];
   };
+  */
 
   return (
     <div className="min-h-screen">
@@ -78,6 +84,7 @@ const CustomerDashboard = () => {
           </div>
 
           <div className="flex items-center space-x-4">
+            <NotificationBell />
             <Link to="/profile" className="btn-ghost flex items-center space-x-2">
               <User className="w-4 h-4" />
               <span className="hidden sm:inline">{user?.fullName}</span>
@@ -139,72 +146,12 @@ const CustomerDashboard = () => {
           </Link>
         </div>
 
-        {/* Active Requests */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-        >
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold">Your Requests</h2>
-          </div>
-
-          {isLoading ? (
-            <div className="grid gap-4">
-              {[1, 2].map((i) => (
-                <div key={i} className="card h-32 skeleton" />
-              ))}
-            </div>
-          ) : activeRequests.length === 0 ? (
-            <div className="card text-center py-12">
-              <AlertCircle className="w-12 h-12 text-dark-600 mx-auto mb-4" />
-              <p className="text-dark-400">No active requests</p>
-              <Link to="/request/new" className="btn-primary mt-4 inline-block">
-                Create New Request
-              </Link>
-            </div>
-          ) : (
-            <div className="grid gap-4">
-              {activeRequests.map((request) => (
-                <motion.div
-                  key={request.id}
-                  className="card-hover"
-                  whileHover={{ scale: 1.01 }}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center space-x-3 mb-3">
-                        <span className={`status-badge border ${getStatusColor(request.status)}`}>
-                          {request.status.replace('_', ' ')}
-                        </span>
-                        <span className="text-dark-400 text-sm">
-                          {new Date(request.createdAt).toLocaleDateString()}
-                        </span>
-                      </div>
-
-                      <h3 className="text-lg font-bold mb-2">{getIssueTypeLabel(request.issueType)}</h3>
-                      <p className="text-dark-400 mb-3">{request.description}</p>
-
-                      <div className="flex items-center space-x-4 text-sm text-dark-400">
-                        <div className="flex items-center space-x-1">
-                          <MapPin className="w-4 h-4" />
-                          <span>{request.address || 'Location'}</span>
-                        </div>
-                        {request.finalAmount && (
-                          <div className="flex items-center space-x-1">
-                            <span className="font-semibold text-primary-500">
-                              ₹{request.finalAmount}
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          )}
+        {/* Active Requests section temporarily disabled */}
+        {/*
+        <motion.div>
+          Active Requests UI here
         </motion.div>
+        */}
       </div>
     </div>
   );

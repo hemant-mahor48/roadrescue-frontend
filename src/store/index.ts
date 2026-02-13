@@ -17,7 +17,7 @@ interface AuthState {
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       isAuthenticated: false,
@@ -27,11 +27,10 @@ export const useAuthStore = create<AuthState>()(
         try {
           set({ isLoading: true });
           const response = await authApi.login({ email, password });
-
-          localStorage.setItem('token', response.data?.token || '');
+          sessionStorage.setItem('token', response.data?.token || '');
 
           set({
-            user: response.data?.user,
+            user: response.data?.userDTO,
             token: response.data?.token,
             isAuthenticated: true,
             isLoading: false
@@ -60,13 +59,12 @@ export const useAuthStore = create<AuthState>()(
             throw new Error(registerResponse.message || 'Registration failed');
           }
 
-          // After successful registration, login to get token and user
           const loginResponse = await authApi.login({ email, password });
 
-          localStorage.setItem('token', loginResponse.data?.token || '');
+          sessionStorage.setItem('token', loginResponse.data?.token || '');
 
           set({
-            user: loginResponse.data?.user,
+            user: loginResponse.data?.userDTO,
             token: loginResponse.data?.token,
             isAuthenticated: true,
             isLoading: false
@@ -81,7 +79,7 @@ export const useAuthStore = create<AuthState>()(
       },
 
       logout: () => {
-        localStorage.removeItem('token');
+        sessionStorage.removeItem('token');
         set({ user: null, token: null, isAuthenticated: false });
         toast.success('Logged out successfully');
       },
@@ -94,12 +92,24 @@ export const useAuthStore = create<AuthState>()(
           }
         } catch (error) {
           console.error('Failed to refresh user', error);
+          const state = get();
+          if (state.isAuthenticated) {
+            toast.error('Failed to load user data');
+          }
         }
       },
     }),
     {
       name: 'auth-storage',
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => sessionStorage),
+      onRehydrateStorage: () => (state) => {
+        if (state && state.token) {
+          // Token exists, that's good
+        } else {
+          state!.user = null;
+          state!.isAuthenticated = false;
+        }
+      },
     }
   )
 );

@@ -23,7 +23,18 @@ const LoginPage = () => {
     setIsLoading(true);
     try {
       await login(email, password);
-      navigate('/dashboard');
+      
+      // Get user from store to check role
+      const { user } = useAuthStore.getState();
+      
+      // Navigate based on user role or mechanic profile
+      if (user?.role === 'MECHANIC' || user?.mechanicProfile) {
+        console.log(user.role)
+        navigate('/mechanic/dashboard');
+      } else {
+        console.log(user?.role)
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error('Login error:', error);
     } finally {
