@@ -1,11 +1,11 @@
 import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check } from 'lucide-react';
+import { Bell, Check, X } from 'lucide-react';
 import { useNotification } from '../hooks/useNotification';
 import { formatDistanceToNow } from 'date-fns';
 
 const NotificationBell = () => {
-  const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotification();
+  const { notifications, unreadCount, markAllAsRead, deleteNotification } = useNotification();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -78,7 +78,13 @@ const NotificationBell = () => {
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 10 }}
-            className="absolute right-0 mt-2 w-96 bg-dark-800 border border-dark-700 rounded-xl shadow-2xl z-50"
+            className="absolute right-0 mt-2 w-96 bg-dark-800 border border-dark-700 rounded-xl shadow-2xl z-[9999] fixed md:absolute"
+            style={{
+              top: 'auto',
+              bottom: 'auto',
+              right: 'auto',
+              left: 'auto',
+            }}
           >
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b border-dark-700">
@@ -106,12 +112,12 @@ const NotificationBell = () => {
                   {notifications.map((notification) => (
                     <motion.div
                       key={notification.id}
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className={`p-4 hover:bg-dark-700/50 transition-colors cursor-pointer ${
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 20 }}
+                      className={`p-4 hover:bg-dark-700/50 transition-colors group ${
                         !notification.read ? 'bg-dark-700/30' : ''
                       }`}
-                      onClick={() => markAsRead(notification.id)}
                     >
                       <div className="flex items-start space-x-3">
                         <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getNotificationColor(notification.type)}`}>
@@ -134,6 +140,15 @@ const NotificationBell = () => {
                             {formatDistanceToNow(new Date(notification.timestamp), { addSuffix: true })}
                           </p>
                         </div>
+
+                        {/* Delete Button */}
+                        <button
+                          onClick={() => deleteNotification(notification.id)}
+                          className="flex-shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/20 text-red-500 hover:text-red-400 transition-all"
+                          title="Delete notification"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
                     </motion.div>
                   ))}

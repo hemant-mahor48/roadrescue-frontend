@@ -81,6 +81,8 @@ export interface BreakdownRequest {
   issueType: IssueType;
   description: string;
   mechanicId?: string;
+  mechanicName?: string;
+  mechanicPhone?: string;
   status: RequestStatus;
   partsUsed?: string[];
   laborCharge?: number;

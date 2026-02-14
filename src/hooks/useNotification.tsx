@@ -105,6 +105,16 @@ export const useNotification = () => {
     setUnreadCount(0);
   }, []);
 
+  const deleteNotification = useCallback((notificationId: string) => {
+    setNotifications((prev) => {
+      const notification = prev.find(n => n.id === notificationId);
+      if (notification && !notification.read) {
+        setUnreadCount((count) => Math.max(0, count - 1));
+      }
+      return prev.filter(n => n.id !== notificationId);
+    });
+  }, []);
+
   const clearNotifications = useCallback(() => {
     setNotifications([]);
     setUnreadCount(0);
@@ -115,6 +125,7 @@ export const useNotification = () => {
     unreadCount,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     clearNotifications,
   };
 };
