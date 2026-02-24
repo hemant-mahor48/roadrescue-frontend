@@ -1,27 +1,33 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import { 
-  LogOut, 
-  User, 
-  Wrench, 
-  MapPin, 
-  ToggleLeft, 
+import {
+  LogOut,
+  User,
+  Wrench,
+  MapPin,
+  ToggleLeft,
   ToggleRight,
   Clock,
   Navigation,
   CheckCircle,
   XCircle,
-  AlertCircle
+  AlertCircle,
+  Radio,
+  StopCircle,
 } from 'lucide-react';
 import { useAuthStore, useMechanicStore } from '../store';
 import { useNotification } from '../hooks/useNotification';
 import { mechanicApi, requestApi } from '../services/api';
+import type { ActiveAssignment } from '../types';
 import toast from 'react-hot-toast';
 import NotificationBell from '../components/NotificationBell';
 
+const TRACKING_INTERVAL_MS = 10_000; // 10 seconds
+
 interface IncomingRequest {
   requestId: string;
+  customerId: string;
   customerLatitude: number;
   customerLongitude: number;
   estimatedDistance: number;
@@ -31,52 +37,95 @@ interface IncomingRequest {
 
 const MechanicDashboard = () => {
   const { user, logout } = useAuthStore();
-  const { isAvailable, setAvailability } = useMechanicStore();
+  const { isAvailable, setAvailability, activeAssignment, setActiveAssignment } = useMechanicStore();
   const { notifications } = useNotification();
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
 
-  // Extract incoming requests from notifications
+  // Tracking interval ref — cleared when mechanic stops
+  const trackingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ─── Extract incoming requests from notification stream ──────────────────
   useEffect(() => {
     const newRequests = notifications
       .filter(n => n.type === 'NEW_REQUEST_NEARBY' && !n.read && n.data)
       .map(n => ({
         requestId: n.data.requestId,
+        customerId: n.data.customerId ?? '',          // backend must include customerId
         customerLatitude: n.data.customerLatitude,
         customerLongitude: n.data.customerLongitude,
         estimatedDistance: n.data.estimatedDistance,
         issueType: n.data.issueType,
         timestamp: n.timestamp,
       }));
-    
     setIncomingRequests(newRequests);
   }, [notifications]);
 
+  // ─── GPS tracking loop ───────────────────────────────────────────────────
+  const startTracking = useCallback((assignment: ActiveAssignment) => {
+    if (!user?.id) return;
+
+    const sendLocation = () => {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          try {
+            console.log('CustomerId', assignment.customerId);
+            await mechanicApi.trackEnRoute(user.id, {
+              lat: pos.coords.latitude,
+              lng: pos.coords.longitude,
+              requestId: assignment.requestId,
+              customerId: assignment.customerId,
+              customerLat: assignment.customerLat,
+              customerLng: assignment.customerLng,
+            });
+          } catch (err) {
+            console.error('Tracking update failed:', err);
+          }
+        },
+        (err) => console.error('Geolocation error during tracking:', err),
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    };
+
+    // Send immediately, then every 10s
+    sendLocation();
+    trackingIntervalRef.current = setInterval(sendLocation, TRACKING_INTERVAL_MS);
+    console.log('🗺️ Tracking started for request', assignment.requestId);
+  }, [user?.id]);
+
+  const stopTracking = useCallback(() => {
+    if (trackingIntervalRef.current) {
+      clearInterval(trackingIntervalRef.current);
+      trackingIntervalRef.current = null;
+    }
+    setActiveAssignment(null);
+    console.log('🛑 Tracking stopped');
+  }, [setActiveAssignment]);
+
+  // Cleanup on unmount
+  useEffect(() => () => stopTracking(), [stopTracking]);
+
+  // ─── Availability toggle ─────────────────────────────────────────────────
   const handleToggleAvailability = async () => {
     setIsUpdatingAvailability(true);
     try {
       const newAvailability = !isAvailable;
       await mechanicApi.updateAvailability(newAvailability);
       setAvailability(newAvailability);
-      
+
       if (newAvailability) {
-        // Update location when going online
         if (navigator.geolocation) {
           navigator.geolocation.getCurrentPosition(
             async (position) => {
-              await mechanicApi.updateLocation(
-                position.coords.latitude,
-                position.coords.longitude
-              );
+              await mechanicApi.updateLocation(position.coords.latitude, position.coords.longitude);
               toast.success('You are now online and ready to receive requests!');
             },
-            (error) => {
-              console.error('Error getting location:', error);
-              toast.error('Could not get your location. Please enable location services.');
-            }
+            () => toast.error('Could not get your location. Please enable location services.')
           );
         }
       } else {
+        if (activeAssignment) stopTracking();
         toast.success('You are now offline');
       }
     } catch (error: any) {
@@ -86,13 +135,22 @@ const MechanicDashboard = () => {
     }
   };
 
-  const handleAcceptRequest = async (requestId: string) => {
+  // ─── Accept request → begin tracking ─────────────────────────────────────
+  const handleAcceptRequest = async (request: IncomingRequest) => {
     try {
-      await requestApi.acceptRequest(requestId);
-      toast.success('Request accepted! Proceeding to customer location.');
-      
-      // Remove from incoming requests
-      setIncomingRequests(prev => prev.filter(r => r.requestId !== requestId));
+      await requestApi.acceptRequest(request.requestId);
+      toast.success('Request accepted! Starting navigation…');
+      setIncomingRequests(prev => prev.filter(r => r.requestId !== request.requestId));
+
+      const assignment: ActiveAssignment = {
+        requestId: request.requestId,
+        customerId: request.customerId,
+        customerLat: request.customerLatitude,
+        customerLng: request.customerLongitude,
+        issueType: request.issueType,
+      };
+      setActiveAssignment(assignment);
+      startTracking(assignment);
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to accept request');
     }
@@ -102,24 +160,26 @@ const MechanicDashboard = () => {
     try {
       await requestApi.rejectRequest(requestId);
       toast.success('Request rejected');
-      
-      // Remove from incoming requests
       setIncomingRequests(prev => prev.filter(r => r.requestId !== requestId));
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to reject request');
     }
   };
 
-  const getIssueTypeLabel = (type: string): string => {
-    return type.replace(/_/g, ' ').toLowerCase()
-      .split(' ')
-      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-      .join(' ');
+  // ─── Arrived / stop tracking ──────────────────────────────────────────────
+  const handleArrived = () => {
+    stopTracking();
+    toast.success('Marked as arrived. Good luck!');
   };
 
-  const openInMaps = (lat: number, lng: number) => {
+  const getIssueTypeLabel = (type: string) =>
+    type.replace(/_/g, ' ').toLowerCase()
+      .split(' ')
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+  const openInMaps = (lat: number, lng: number) =>
     window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
-  };
 
   return (
     <div className="min-h-screen">
@@ -134,7 +194,7 @@ const MechanicDashboard = () => {
               RoadRescue Pro
             </span>
           </div>
-          
+
           <div className="flex items-center space-x-4">
             <NotificationBell />
             <Link to="/profile" className="btn-ghost flex items-center space-x-2">
@@ -149,20 +209,66 @@ const MechanicDashboard = () => {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Welcome Section */}
-        <motion.div
-          className="mb-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        {/* Welcome */}
+        <motion.div className="mb-8" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
             Welcome, <span className="gradient-text">{user?.fullName?.split(' ')[0]}</span>!
           </h1>
           <p className="text-dark-400">Manage your availability and incoming requests</p>
         </motion.div>
 
+        {/* ─── EN ROUTE PANEL ─────────────────────────────────────────────── */}
+        <AnimatePresence>
+          {activeAssignment && (
+            <motion.div
+              key="en-route"
+              initial={{ opacity: 0, y: -12 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -12 }}
+              className="glass-card p-6 mb-8 border-2 border-orange-500/40"
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center space-x-3">
+                  <div className="w-10 h-10 bg-orange-500/20 rounded-xl flex items-center justify-center">
+                    <Navigation className="w-6 h-6 text-orange-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-orange-300">En Route</h3>
+                    <p className="text-xs text-dark-400">
+                      {getIssueTypeLabel(activeAssignment.issueType)} · Sending location every 10s
+                    </p>
+                  </div>
+                </div>
+
+                {/* Live pulse */}
+                <div className="flex items-center space-x-2 px-3 py-1 bg-green-500/10 rounded-lg">
+                  <Radio className="w-4 h-4 text-green-400 animate-pulse" />
+                  <span className="text-xs text-green-400 font-semibold">LIVE</span>
+                </div>
+              </div>
+
+              <div className="flex space-x-3">
+                <button
+                  onClick={() => openInMaps(activeAssignment.customerLat, activeAssignment.customerLng)}
+                  className="btn-secondary flex-1 flex items-center justify-center space-x-2 text-sm"
+                >
+                  <MapPin className="w-4 h-4" />
+                  <span>Navigate to Customer</span>
+                </button>
+                <button
+                  onClick={handleArrived}
+                  className="btn-primary flex-1 flex items-center justify-center space-x-2 text-sm"
+                >
+                  <StopCircle className="w-4 h-4" />
+                  <span>I've Arrived</span>
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Availability Toggle */}
-        <motion.div 
+        <motion.div
           className="glass-card p-8 mb-8"
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -171,13 +277,12 @@ const MechanicDashboard = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-2xl font-bold mb-1">
-                {isAvailable ? 'You\'re Online' : 'You\'re Offline'}
+                {isAvailable ? "You're Online" : "You're Offline"}
               </h3>
               <p className="text-dark-400">
-                {isAvailable 
-                  ? 'Ready to receive requests from nearby customers' 
-                  : 'Toggle to start receiving requests'
-                }
+                {isAvailable
+                  ? 'Ready to receive requests from nearby customers'
+                  : 'Toggle to start receiving requests'}
               </p>
             </div>
             <button
@@ -193,17 +298,12 @@ const MechanicDashboard = () => {
             </button>
           </div>
 
-          {/* Status Indicator */}
           <div className="mt-6 flex items-center space-x-4">
             <div className={`flex items-center space-x-2 px-4 py-2 rounded-lg ${
-              isAvailable 
-                ? 'bg-green-500/20 text-green-500' 
-                : 'bg-dark-700 text-dark-400'
+              isAvailable ? 'bg-green-500/20 text-green-500' : 'bg-dark-700 text-dark-400'
             }`}>
               <div className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500 animate-pulse' : 'bg-dark-500'}`} />
-              <span className="text-sm font-semibold">
-                {isAvailable ? 'Available' : 'Unavailable'}
-              </span>
+              <span className="text-sm font-semibold">{isAvailable ? 'Available' : 'Unavailable'}</span>
             </div>
           </div>
         </motion.div>
@@ -230,10 +330,9 @@ const MechanicDashboard = () => {
               <MapPin className="w-16 h-16 text-dark-600 mx-auto mb-4" />
               <h3 className="text-xl font-bold mb-2">No Incoming Requests</h3>
               <p className="text-dark-400">
-                {isAvailable 
-                  ? 'Waiting for customers nearby to request help...' 
-                  : 'Turn on availability to start receiving requests'
-                }
+                {isAvailable
+                  ? 'Waiting for customers nearby to request help...'
+                  : 'Turn on availability to start receiving requests'}
               </p>
             </div>
           ) : (
@@ -258,7 +357,7 @@ const MechanicDashboard = () => {
                             {new Date(request.timestamp).toLocaleTimeString()}
                           </span>
                         </div>
-                        
+
                         <h3 className="text-xl font-bold mb-3">
                           {getIssueTypeLabel(request.issueType)}
                         </h3>
@@ -271,7 +370,6 @@ const MechanicDashboard = () => {
                               <p className="font-semibold">{request.estimatedDistance.toFixed(1)} km</p>
                             </div>
                           </div>
-                          
                           <div className="flex items-center space-x-2 text-dark-300">
                             <Clock className="w-5 h-5 text-primary-500" />
                             <div>
@@ -294,13 +392,13 @@ const MechanicDashboard = () => {
                     {/* Action Buttons */}
                     <div className="flex space-x-3">
                       <button
-                        onClick={() => handleAcceptRequest(request.requestId)}
-                        className="btn-primary flex-1 flex items-center justify-center space-x-2"
+                        onClick={() => handleAcceptRequest(request)}
+                        disabled={!!activeAssignment}
+                        className="btn-primary flex-1 flex items-center justify-center space-x-2 disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         <CheckCircle className="w-5 h-5" />
                         <span>Accept</span>
                       </button>
-                      
                       <button
                         onClick={() => handleRejectRequest(request.requestId)}
                         className="btn-secondary flex-1 flex items-center justify-center space-x-2 bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500/20"
@@ -310,7 +408,12 @@ const MechanicDashboard = () => {
                       </button>
                     </div>
 
-                    {/* Warning */}
+                    {activeAssignment && (
+                      <p className="mt-3 text-xs text-center text-dark-500">
+                        Already en route — complete current request first
+                      </p>
+                    )}
+
                     <div className="mt-4 flex items-start space-x-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
                       <AlertCircle className="w-5 h-5 text-orange-500 flex-shrink-0 mt-0.5" />
                       <p className="text-sm text-dark-300">

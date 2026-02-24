@@ -18,6 +18,7 @@ import { useAuthStore, useRequestStore } from '../store';
 import { requestApi } from '../services/api';
 import { RequestStatus, IssueType } from '../types';
 import NotificationBell from '../components/NotificationBell';
+import TrackingPanel from '../components/Trackingpanel' // ← NEW
 
 const CustomerDashboard = () => {
   const { user, logout } = useAuthStore();
@@ -57,20 +58,6 @@ const CustomerDashboard = () => {
     return colors[status] || 'bg-gray-500/20 text-gray-500 border-gray-500/30';
   };
 
-  // const getStatusIcon = (status: RequestStatus) => {
-  //   switch (status) {
-  //     case RequestStatus.COMPLETED:
-  //       return '✓';
-  //     case RequestStatus.ASSIGNED:
-  //     case RequestStatus.IN_PROGRESS:
-  //       return '⏳';
-  //     case RequestStatus.SEARCHING:
-  //       return '🔍';
-  //     default:
-  //       return '•';
-  //   }
-  // };
-
   const getIssueTypeLabel = (type: IssueType): string => {
     const labels: Record<IssueType, string> = {
       [IssueType.TYRE_PUNCTURE]: 'Tyre Puncture',
@@ -90,7 +77,7 @@ const CustomerDashboard = () => {
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
     });
   };
 
@@ -123,11 +110,7 @@ const CustomerDashboard = () => {
 
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Welcome Section */}
-        <motion.div
-          className="mb-8"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <motion.div className="mb-8" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-4xl font-bold mb-2" style={{ fontFamily: 'Space Grotesk, sans-serif' }}>
             Welcome back, <span className="gradient-text">{user?.fullName?.split(' ')[0]}</span>!
           </h1>
@@ -220,9 +203,7 @@ const CustomerDashboard = () => {
                           {request.status.replace(/_/g, ' ')}
                         </span>
                       </div>
-                      <p className="text-dark-400 text-sm mb-3">
-                        {request.description}
-                      </p>
+                      <p className="text-dark-400 text-sm mb-3">{request.description}</p>
                     </div>
                     <div className="text-right text-dark-400 text-sm">
                       <p className="font-medium">{formatDate(request.createdAt)}</p>
@@ -231,7 +212,6 @@ const CustomerDashboard = () => {
 
                   {/* Request Details Grid */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4 pb-4 border-b border-dark-700">
-                    {/* Location */}
                     <div className="flex items-start space-x-2">
                       <MapPin className="w-4 h-4 text-primary-500 flex-shrink-0 mt-1" />
                       <div>
@@ -242,7 +222,6 @@ const CustomerDashboard = () => {
                       </div>
                     </div>
 
-                    {/* Status Timeline */}
                     <div className="flex items-start space-x-2">
                       <Clock className="w-4 h-4 text-primary-500 flex-shrink-0 mt-1" />
                       <div>
@@ -251,6 +230,7 @@ const CustomerDashboard = () => {
                           {request.status === RequestStatus.PENDING && 'Pending'}
                           {request.status === RequestStatus.SEARCHING && 'Searching'}
                           {request.status === RequestStatus.ASSIGNED && 'Assigned'}
+                          {request.status === RequestStatus.EN_ROUTE && 'En Route'}
                           {request.status === RequestStatus.IN_PROGRESS && 'In Progress'}
                           {request.status === RequestStatus.COMPLETED && 'Completed'}
                           {request.status === RequestStatus.CANCELLED && 'Cancelled'}
@@ -258,20 +238,16 @@ const CustomerDashboard = () => {
                       </div>
                     </div>
 
-                    {/* Mechanic Assigned */}
                     {request.mechanicId && (
                       <div className="flex items-start space-x-2">
                         <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-1" />
                         <div>
                           <p className="text-xs text-dark-500">Mechanic</p>
-                          <p className="text-sm font-medium">
-                            {request.mechanicName || 'Assigned'}
-                          </p>
+                          <p className="text-sm font-medium">{request.mechanicName || 'Assigned'}</p>
                         </div>
                       </div>
                     )}
 
-                    {/* Charges */}
                     {request.finalAmount && (
                       <div>
                         <p className="text-xs text-dark-500">Total Amount</p>
@@ -282,10 +258,25 @@ const CustomerDashboard = () => {
                     )}
                   </div>
 
+                  {/* ─── LIVE TRACKING PANEL (EN_ROUTE only) ──────────────── */}
+                  {request.status === RequestStatus.EN_ROUTE && (
+                    <TrackingPanel
+                      requestId={request.id}
+                      mechanicName={request.mechanicName}
+                      customerLat={request.locationLatitude}
+                      customerLng={request.locationLongitude}
+                    />
+                  )}
+
                   {/* Action Buttons */}
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between mt-4">
                     <button
-                      onClick={() => window.open(`https://www.google.com/maps/dir/?api=1&destination=${request.locationLatitude},${request.locationLongitude}`, '_blank')}
+                      onClick={() =>
+                        window.open(
+                          `https://www.google.com/maps/dir/?api=1&destination=${request.locationLatitude},${request.locationLongitude}`,
+                          '_blank'
+                        )
+                      }
                       className="text-primary-500 hover:text-primary-400 text-sm font-medium flex items-center space-x-1 transition-colors"
                     >
                       <Navigation className="w-4 h-4" />
@@ -306,10 +297,19 @@ const CustomerDashboard = () => {
                       </div>
                     )}
 
-                    {[RequestStatus.PENDING, RequestStatus.SEARCHING, RequestStatus.ASSIGNED].includes(request.status) && (
+                    {[RequestStatus.PENDING, RequestStatus.SEARCHING, RequestStatus.ASSIGNED].includes(
+                      request.status
+                    ) && (
                       <div className="flex items-center space-x-2 px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg animate-pulse">
                         <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                         <span className="text-xs font-medium text-blue-400">In Progress</span>
+                      </div>
+                    )}
+
+                    {request.status === RequestStatus.EN_ROUTE && (
+                      <div className="flex items-center space-x-2 px-3 py-1 bg-orange-500/10 border border-orange-500/30 rounded-lg">
+                        <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
+                        <span className="text-xs font-medium text-orange-400">Mechanic En Route</span>
                       </div>
                     )}
                   </div>

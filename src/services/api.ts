@@ -89,29 +89,20 @@ export const userApi = {
 
 // Mechanic APIs
 export const mechanicApi = {
-  // Step 1: Register mechanic with location
   registerAsMechanic: async (data: { 
     currentLocationLat: number; 
     currentLocationLng: number 
   }): Promise<ApiResponse<MechanicProfile>> => {
-    const response = await api.post<ApiResponse<MechanicProfile>>('/v1/mechanics/register', {
-      currentLocationLat: data.currentLocationLat,
-      currentLocationLng: data.currentLocationLng,
-    });
+    const response = await api.post<ApiResponse<MechanicProfile>>('/v1/mechanics/register', data);
     return response.data;
   },
 
-  // Step 2: Submit verification documents
   submitVerification: async (data: { 
     licenseNumber: string; 
     aadhaarNumber: string; 
     profileImageUrl: string 
   }): Promise<ApiResponse<MechanicProfile>> => {
-    const response = await api.post<ApiResponse<MechanicProfile>>('/v1/mechanics/verification', {
-      licenseNumber: data.licenseNumber,
-      aadhaarNumber: data.aadhaarNumber,
-      profileImageUrl: data.profileImageUrl,
-    });
+    const response = await api.post<ApiResponse<MechanicProfile>>('/v1/mechanics/verification', data);
     return response.data;
   },
 
@@ -131,6 +122,30 @@ export const mechanicApi = {
     const response = await api.post<ApiResponse<void>>('/v1/mechanics/location', null, {
       params: { lat, lng }
     });
+    return response.data;
+  },
+
+  /**
+   * Flow 3: Called every 10s while mechanic is EN_ROUTE.
+   * Location Service calculates ETA, updates Redis, and publishes to Kafka
+   * so the customer receives live updates via WebSocket.
+   */
+  trackEnRoute: async (
+    mechanicId: string,
+    params: {
+      lat: number;
+      lng: number;
+      requestId: string;
+      customerId: string;
+      customerLat: number;
+      customerLng: number;
+    }
+  ): Promise<ApiResponse<void>> => {
+    const response = await api.post<ApiResponse<void>>(
+      `/v1/location/mechanics/${mechanicId}/track`,
+      null,
+      { params }
+    );
     return response.data;
   },
 };

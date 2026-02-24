@@ -12,13 +12,48 @@ export const useNotification = () => {
     setNotifications((prev) => [notification, ...prev]);
     setUnreadCount((prev) => prev + 1);
 
-    // Toast UI
+    // ─── Arriving soon: distinct urgent toast ───────────────────────────────
+    if (notification.type === 'MECHANIC_ARRIVING_SOON') {
+      toast.custom(
+        (t) => (
+          <div
+            className={`${t.visible ? "animate-enter" : "animate-leave"}
+              max-w-md w-full bg-orange-900/90 shadow-lg rounded-xl pointer-events-auto
+              flex border border-orange-500/50`}
+          >
+            <div className="flex-1 p-4">
+              <div className="flex items-center space-x-3">
+                <div className="w-10 h-10 rounded-full bg-orange-500/30 flex items-center justify-center flex-shrink-0">
+                  <span className="text-2xl">🔧</span>
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">{notification.title}</p>
+                  <p className="text-sm text-orange-200 mt-0.5">{notification.message}</p>
+                </div>
+              </div>
+            </div>
+            <div className="flex border-l border-orange-700/50">
+              <button
+                onClick={() => toast.dismiss(t.id)}
+                className="w-full p-4 text-sm font-medium text-orange-300 hover:text-white focus:outline-none"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        ),
+        { duration: 8000, position: "top-right" }
+      );
+      return; // skip the generic toast below
+    }
+
+    // ─── Generic toast ───────────────────────────────────────────────────────
     toast.custom(
       (t) => (
         <div
-          className={`${
-            t.visible ? "animate-enter" : "animate-leave"
-          } max-w-md w-full bg-dark-800 shadow-lg rounded-xl pointer-events-auto flex border border-primary-500/30`}
+          className={`${t.visible ? "animate-enter" : "animate-leave"}
+            max-w-md w-full bg-dark-800 shadow-lg rounded-xl pointer-events-auto
+            flex border border-primary-500/30`}
         >
           <div className="flex-1 w-0 p-4">
             <div className="flex items-start">
@@ -37,18 +72,12 @@ export const useNotification = () => {
                   </div>
                 )}
               </div>
-
               <div className="ml-3 flex-1">
-                <p className="text-sm font-medium text-white">
-                  {notification.title}
-                </p>
-                <p className="mt-1 text-sm text-dark-300">
-                  {notification.message}
-                </p>
+                <p className="text-sm font-medium text-white">{notification.title}</p>
+                <p className="mt-1 text-sm text-dark-300">{notification.message}</p>
               </div>
             </div>
           </div>
-
           <div className="flex border-l border-dark-700">
             <button
               onClick={() => toast.dismiss(t.id)}
@@ -59,27 +88,18 @@ export const useNotification = () => {
           </div>
         </div>
       ),
-      {
-        duration: 5000,
-        position: "top-right",
-      }
+      { duration: 5000, position: "top-right" }
     );
   }, []);
 
   useEffect(() => {
     if (isAuthenticated && user?.id && user?.role) {
-      console.log("🔌 Connecting to WebSocket...", {
-        userId: user.id,
-        role: user.role,
-      });
+      console.log("🔌 Connecting to WebSocket...", { userId: user.id, role: user.role });
 
-      const userType =
-        user.role === "MECHANIC" ? "MECHANIC" : "CUSTOMER";
-
+      const userType = user.role === "MECHANIC" ? "MECHANIC" : "CUSTOMER";
       webSocketService.connect(user.id, userType);
 
       const destination = `/queue/notifications/${userType.toLowerCase()}/${user.id}`;
-
       webSocketService.subscribe(destination, handleNotification);
 
       return () => {
@@ -91,27 +111,23 @@ export const useNotification = () => {
 
   const markAsRead = useCallback((notificationId: string) => {
     setNotifications((prev) =>
-      prev.map((n) =>
-        n.id === notificationId ? { ...n, read: true } : n
-      )
+      prev.map((n) => (n.id === notificationId ? { ...n, read: true } : n))
     );
     setUnreadCount((prev) => Math.max(0, prev - 1));
   }, []);
 
   const markAllAsRead = useCallback(() => {
-    setNotifications((prev) =>
-      prev.map((n) => ({ ...n, read: true }))
-    );
+    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     setUnreadCount(0);
   }, []);
 
   const deleteNotification = useCallback((notificationId: string) => {
     setNotifications((prev) => {
-      const notification = prev.find(n => n.id === notificationId);
+      const notification = prev.find((n) => n.id === notificationId);
       if (notification && !notification.read) {
         setUnreadCount((count) => Math.max(0, count - 1));
       }
-      return prev.filter(n => n.id !== notificationId);
+      return prev.filter((n) => n.id !== notificationId);
     });
   }, []);
 

@@ -154,3 +154,21 @@ export interface NearbyMechanic {
   isAvailable: boolean;
   rating?: number;
 }
+
+export interface TrackingData {
+  requestId: string;
+  mechanicId: string;
+  mechanicLat: number;
+  mechanicLng: number;
+  etaMinutes: number;
+  distanceRemainingKm: number;
+  timestamp: string;
+}
+
+export interface ActiveAssignment {
+  requestId: string;
+  customerId: string;
+  customerLat: number;
+  customerLng: number;
+  issueType: string;
+}

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { User, BreakdownRequest } from '../types';
+import type { User, BreakdownRequest, ActiveAssignment } from '../types';
 import { authApi, userApi } from '../services/api';
 import toast from 'react-hot-toast';
 
@@ -28,14 +28,12 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
           const response = await authApi.login({ email, password });
           sessionStorage.setItem('token', response.data?.token || '');
-
           set({
             user: response.data?.userDTO,
             token: response.data?.token,
             isAuthenticated: true,
-            isLoading: false
+            isLoading: false,
           });
-
           toast.success('Login successful!');
         } catch (error: any) {
           set({ isLoading: false });
@@ -47,29 +45,17 @@ export const useAuthStore = create<AuthState>()(
       register: async (email, phone, password, fullName, role = 'CUSTOMER') => {
         try {
           set({ isLoading: true });
-          const registerResponse = await authApi.register({
-            email,
-            phone,
-            password,
-            fullName,
-            role: role as any
-          });
-
-          if (!registerResponse.success) {
-            throw new Error(registerResponse.message || 'Registration failed');
-          }
+          const registerResponse = await authApi.register({ email, phone, password, fullName, role: role as any });
+          if (!registerResponse.success) throw new Error(registerResponse.message || 'Registration failed');
 
           const loginResponse = await authApi.login({ email, password });
-
           sessionStorage.setItem('token', loginResponse.data?.token || '');
-
           set({
             user: loginResponse.data?.userDTO,
             token: loginResponse.data?.token,
             isAuthenticated: true,
-            isLoading: false
+            isLoading: false,
           });
-
           toast.success('Registration successful!');
         } catch (error: any) {
           set({ isLoading: false });
@@ -87,15 +73,11 @@ export const useAuthStore = create<AuthState>()(
       refreshUser: async () => {
         try {
           const response = await userApi.getCurrentUser();
-          if (response.success && response.data) {
-            set({ user: response.data });
-          }
+          if (response.success && response.data) set({ user: response.data });
         } catch (error) {
           console.error('Failed to refresh user', error);
           const state = get();
-          if (state.isAuthenticated) {
-            toast.error('Failed to load user data');
-          }
+          if (state.isAuthenticated) toast.error('Failed to load user data');
         }
       },
     }),
@@ -103,9 +85,7 @@ export const useAuthStore = create<AuthState>()(
       name: 'auth-storage',
       storage: createJSONStorage(() => sessionStorage),
       onRehydrateStorage: () => (state) => {
-        if (state && state.token) {
-          // Token exists, that's good
-        } else {
+        if (!state?.token) {
           state!.user = null;
           state!.isAuthenticated = false;
         }
@@ -126,38 +106,35 @@ interface RequestState {
 export const useRequestStore = create<RequestState>((set) => ({
   activeRequests: [],
   currentRequest: null,
-
   setActiveRequests: (requests) => set({ activeRequests: requests }),
-
   setCurrentRequest: (request) => set({ currentRequest: request }),
-
   addRequest: (request) => set((state) => ({
     activeRequests: [request, ...state.activeRequests],
-    currentRequest: request
+    currentRequest: request,
   })),
-
   updateRequest: (id, updates) => set((state) => ({
-    activeRequests: state.activeRequests.map(req =>
-      req.id === id ? { ...req, ...updates } : req
-    ),
+    activeRequests: state.activeRequests.map(req => req.id === id ? { ...req, ...updates } : req),
     currentRequest: state.currentRequest?.id === id
       ? { ...state.currentRequest, ...updates }
-      : state.currentRequest
+      : state.currentRequest,
   })),
 }));
 
 interface MechanicState {
   isAvailable: boolean;
   currentLocation: { lat: number; lng: number } | null;
+  /** Set when mechanic accepts a request and begins navigating (EN_ROUTE) */
+  activeAssignment: ActiveAssignment | null;
   setAvailability: (available: boolean) => void;
   updateLocation: (location: { lat: number; lng: number }) => void;
+  setActiveAssignment: (assignment: ActiveAssignment | null) => void;
 }
 
 export const useMechanicStore = create<MechanicState>((set) => ({
   isAvailable: false,
   currentLocation: null,
-
+  activeAssignment: null,
   setAvailability: (available) => set({ isAvailable: available }),
-
   updateLocation: (location) => set({ currentLocation: location }),
+  setActiveAssignment: (assignment) => set({ activeAssignment: assignment }),
 }));
