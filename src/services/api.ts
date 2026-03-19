@@ -153,11 +153,13 @@ export const mechanicApi = {
 // Request APIs
 export const requestApi = {
   createRequest: async (data: {
+    vehicleId: string;
     currentLocationLat: number;
     currentLocationLng: number;
     issueType: string;
     description: string;
     address?: string;
+    photoUrls?: string[];
   }): Promise<ApiResponse<string>> => {
     const response = await api.post<ApiResponse<string>>('/v1/requests', data);
     return response.data;
@@ -175,6 +177,11 @@ export const requestApi = {
 
   rejectRequest: async (id: string): Promise<ApiResponse<void>> => {
     const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/reject`);
+    return response.data;
+  },
+
+  markArrived: async (id: string): Promise<ApiResponse<void>> => {
+    const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/arrived`);
     return response.data;
   },
 

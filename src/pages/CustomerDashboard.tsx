@@ -18,15 +18,29 @@ import { useAuthStore, useRequestStore } from '../store';
 import { requestApi } from '../services/api';
 import { RequestStatus, IssueType } from '../types';
 import NotificationBell from '../components/NotificationBell';
-import TrackingPanel from '../components/Trackingpanel' // ← NEW
+import TrackingPanel from '../components/TrackingPanel';
+
+const REQUEST_REFRESH_INTERVAL_MS = 15_000;
+const SERVICE_TIMER_INTERVAL_MS = 1_000;
 
 const CustomerDashboard = () => {
   const { user, logout } = useAuthStore();
   const { activeRequests, setActiveRequests } = useRequestStore();
   const [isLoading, setIsLoading] = useState(true);
+  const [timerTick, setTimerTick] = useState(0);
 
   useEffect(() => {
     fetchRequests();
+    const intervalId = setInterval(fetchRequests, REQUEST_REFRESH_INTERVAL_MS);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const timerId = setInterval(() => {
+      setTimerTick((current) => current + 1);
+    }, SERVICE_TIMER_INTERVAL_MS);
+
+    return () => clearInterval(timerId);
   }, []);
 
   const fetchRequests = async () => {
@@ -79,6 +93,22 @@ const CustomerDashboard = () => {
       hour: '2-digit',
       minute: '2-digit',
     });
+  };
+
+  const formatElapsedTime = (startedAt?: string) => {
+    void timerTick;
+    if (!startedAt) return '00:00';
+
+    const totalSeconds = Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
   };
 
   return (
@@ -268,6 +298,27 @@ const CustomerDashboard = () => {
                     />
                   )}
 
+                  {request.status === RequestStatus.IN_PROGRESS && (
+                    <div className="mt-4 rounded-xl border border-primary-500/30 bg-primary-500/5 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-primary-300">
+                            {request.mechanicName || 'Mechanic'} has arrived
+                          </p>
+                          <p className="text-xs text-dark-400">
+                            Service is underway{request.serviceStartedAt ? ` since ${formatDate(request.serviceStartedAt)}` : ''}.
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-dark-800/60 px-3 py-2 text-right">
+                          <p className="text-xs text-dark-500">Service Timer</p>
+                          <p className="text-sm font-bold text-white">
+                            {formatElapsedTime(request.serviceStartedAt)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Action Buttons */}
                   <div className="flex items-center justify-between mt-4">
                     <button
@@ -310,6 +361,13 @@ const CustomerDashboard = () => {
                       <div className="flex items-center space-x-2 px-3 py-1 bg-orange-500/10 border border-orange-500/30 rounded-lg">
                         <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse" />
                         <span className="text-xs font-medium text-orange-400">Mechanic En Route</span>
+                      </div>
+                    )}
+
+                    {request.status === RequestStatus.IN_PROGRESS && (
+                      <div className="flex items-center space-x-2 px-3 py-1 bg-primary-500/10 border border-primary-500/30 rounded-lg">
+                        <div className="w-2 h-2 bg-primary-500 rounded-full animate-pulse" />
+                        <span className="text-xs font-medium text-primary-300">Service In Progress</span>
                       </div>
                     )}
                   </div>

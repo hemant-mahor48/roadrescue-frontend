@@ -19,11 +19,12 @@ import {
 import { useAuthStore, useMechanicStore } from '../store';
 import { useNotification } from '../hooks/useNotification';
 import { mechanicApi, requestApi } from '../services/api';
-import type { ActiveAssignment } from '../types';
+import { RequestStatus, type ActiveAssignment } from '../types';
 import toast from 'react-hot-toast';
 import NotificationBell from '../components/NotificationBell';
 
 const TRACKING_INTERVAL_MS = 10_000; // 10 seconds
+const SERVICE_TIMER_INTERVAL_MS = 1_000;
 
 interface IncomingRequest {
   requestId: string;
@@ -41,6 +42,7 @@ const MechanicDashboard = () => {
   const { notifications } = useNotification();
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
+  const [serviceElapsedMs, setServiceElapsedMs] = useState(0);
 
   // Tracking interval ref — cleared when mechanic stops
   const trackingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -94,17 +96,60 @@ const MechanicDashboard = () => {
     console.log('🗺️ Tracking started for request', assignment.requestId);
   }, [user?.id]);
 
-  const stopTracking = useCallback(() => {
+  const clearTrackingInterval = useCallback(() => {
     if (trackingIntervalRef.current) {
       clearInterval(trackingIntervalRef.current);
       trackingIntervalRef.current = null;
     }
-    setActiveAssignment(null);
-    console.log('🛑 Tracking stopped');
-  }, [setActiveAssignment]);
+  }, []);
 
-  // Cleanup on unmount
-  useEffect(() => () => stopTracking(), [stopTracking]);
+  const stopTracking = useCallback((clearAssignment: boolean = true) => {
+    clearTrackingInterval();
+    if (clearAssignment) {
+      setActiveAssignment(null);
+    }
+    console.log('Tracking stopped');
+  }, [clearTrackingInterval, setActiveAssignment]);
+
+  const formatElapsedTime = (elapsedMs: number) => {
+    const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+
+    if (hours > 0) {
+      return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+    }
+
+    return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  useEffect(() => {
+    if (!activeAssignment?.serviceStartedAt || activeAssignment.status !== RequestStatus.IN_PROGRESS) {
+      setServiceElapsedMs(0);
+      return;
+    }
+
+    const updateElapsed = () => {
+      setServiceElapsedMs(Date.now() - new Date(activeAssignment.serviceStartedAt!).getTime());
+    };
+
+    updateElapsed();
+    const timerId = setInterval(updateElapsed, SERVICE_TIMER_INTERVAL_MS);
+    return () => clearInterval(timerId);
+  }, [activeAssignment?.serviceStartedAt, activeAssignment?.status]);
+
+  useEffect(() => {
+    if (activeAssignment?.status === RequestStatus.EN_ROUTE && !trackingIntervalRef.current) {
+      startTracking(activeAssignment);
+    }
+    if (activeAssignment?.status !== RequestStatus.EN_ROUTE) {
+      clearTrackingInterval();
+    }
+  }, [activeAssignment, clearTrackingInterval, startTracking]);
+
+  // Cleanup on unmount: keep assignment in store, only stop the interval.
+  useEffect(() => () => clearTrackingInterval(), [clearTrackingInterval]);
 
   // ─── Availability toggle ─────────────────────────────────────────────────
   const handleToggleAvailability = async () => {
@@ -148,6 +193,7 @@ const MechanicDashboard = () => {
         customerLat: request.customerLatitude,
         customerLng: request.customerLongitude,
         issueType: request.issueType,
+        status: RequestStatus.EN_ROUTE,
       };
       setActiveAssignment(assignment);
       startTracking(assignment);
@@ -167,9 +213,21 @@ const MechanicDashboard = () => {
   };
 
   // ─── Arrived / stop tracking ──────────────────────────────────────────────
-  const handleArrived = () => {
-    stopTracking();
-    toast.success('Marked as arrived. Good luck!');
+  const handleArrived = async () => {
+    if (!activeAssignment) return;
+
+    try {
+      await requestApi.markArrived(activeAssignment.requestId);
+      stopTracking(false);
+      setActiveAssignment({
+        ...activeAssignment,
+        status: RequestStatus.IN_PROGRESS,
+        serviceStartedAt: new Date().toISOString(),
+      });
+      toast.success('Marked as arrived. Service timer started.');
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to mark arrival');
+    }
   };
 
   const getIssueTypeLabel = (type: string) =>
@@ -225,44 +283,91 @@ const MechanicDashboard = () => {
               initial={{ opacity: 0, y: -12 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -12 }}
-              className="glass-card p-6 mb-8 border-2 border-orange-500/40"
+              className={`glass-card p-6 mb-8 border-2 ${
+                activeAssignment.status === RequestStatus.IN_PROGRESS
+                  ? 'border-primary-500/40'
+                  : 'border-orange-500/40'
+              }`}
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-3">
-                  <div className="w-10 h-10 bg-orange-500/20 rounded-xl flex items-center justify-center">
-                    <Navigation className="w-6 h-6 text-orange-400" />
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
+                    activeAssignment.status === RequestStatus.IN_PROGRESS
+                      ? 'bg-primary-500/20'
+                      : 'bg-orange-500/20'
+                  }`}>
+                    {activeAssignment.status === RequestStatus.IN_PROGRESS ? (
+                      <Clock className="w-6 h-6 text-primary-400" />
+                    ) : (
+                      <Navigation className="w-6 h-6 text-orange-400" />
+                    )}
                   </div>
                   <div>
-                    <h3 className="text-lg font-bold text-orange-300">En Route</h3>
+                    <h3 className={`text-lg font-bold ${
+                      activeAssignment.status === RequestStatus.IN_PROGRESS
+                        ? 'text-primary-300'
+                        : 'text-orange-300'
+                    }`}>
+                      {activeAssignment.status === RequestStatus.IN_PROGRESS ? 'Service In Progress' : 'En Route'}
+                    </h3>
                     <p className="text-xs text-dark-400">
-                      {getIssueTypeLabel(activeAssignment.issueType)} · Sending location every 10s
+                      {activeAssignment.status === RequestStatus.IN_PROGRESS
+                        ? `${getIssueTypeLabel(activeAssignment.issueType)} · Timer started on arrival`
+                        : `${getIssueTypeLabel(activeAssignment.issueType)} · Sending location every 10s`}
                     </p>
                   </div>
                 </div>
 
-                {/* Live pulse */}
-                <div className="flex items-center space-x-2 px-3 py-1 bg-green-500/10 rounded-lg">
-                  <Radio className="w-4 h-4 text-green-400 animate-pulse" />
-                  <span className="text-xs text-green-400 font-semibold">LIVE</span>
-                </div>
+                {activeAssignment.status === RequestStatus.IN_PROGRESS ? (
+                  <div className="px-3 py-1 bg-primary-500/10 rounded-lg">
+                    <span className="text-xs text-primary-300 font-semibold">
+                      {formatElapsedTime(serviceElapsedMs)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2 px-3 py-1 bg-green-500/10 rounded-lg">
+                    <Radio className="w-4 h-4 text-green-400 animate-pulse" />
+                    <span className="text-xs text-green-400 font-semibold">LIVE</span>
+                  </div>
+                )}
               </div>
 
-              <div className="flex space-x-3">
-                <button
-                  onClick={() => openInMaps(activeAssignment.customerLat, activeAssignment.customerLng)}
-                  className="btn-secondary flex-1 flex items-center justify-center space-x-2 text-sm"
-                >
-                  <MapPin className="w-4 h-4" />
-                  <span>Navigate to Customer</span>
-                </button>
-                <button
-                  onClick={handleArrived}
-                  className="btn-primary flex-1 flex items-center justify-center space-x-2 text-sm"
-                >
-                  <StopCircle className="w-4 h-4" />
-                  <span>I've Arrived</span>
-                </button>
-              </div>
+              {activeAssignment.status === RequestStatus.IN_PROGRESS ? (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-lg bg-dark-800/60 px-4 py-3">
+                    <p className="text-xs text-dark-500">Started</p>
+                    <p className="text-sm font-semibold text-white">
+                      {activeAssignment.serviceStartedAt
+                        ? new Date(activeAssignment.serviceStartedAt).toLocaleTimeString([], {
+                            hour: '2-digit',
+                            minute: '2-digit',
+                          })
+                        : 'Just now'}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-dark-800/60 px-4 py-3">
+                    <p className="text-xs text-dark-500">Elapsed</p>
+                    <p className="text-sm font-semibold text-white">{formatElapsedTime(serviceElapsedMs)}</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex space-x-3">
+                  <button
+                    onClick={() => openInMaps(activeAssignment.customerLat, activeAssignment.customerLng)}
+                    className="btn-secondary flex-1 flex items-center justify-center space-x-2 text-sm"
+                  >
+                    <MapPin className="w-4 h-4" />
+                    <span>Navigate to Customer</span>
+                  </button>
+                  <button
+                    onClick={handleArrived}
+                    className="btn-primary flex-1 flex items-center justify-center space-x-2 text-sm"
+                  >
+                    <StopCircle className="w-4 h-4" />
+                    <span>I've Arrived</span>
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
         </AnimatePresence>

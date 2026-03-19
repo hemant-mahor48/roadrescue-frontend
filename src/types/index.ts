@@ -51,10 +51,11 @@ export interface User {
 export interface Vehicle {
   id: string;
   vehicleType: VehicleType;
-  make: string;
+  manufacturer: string;
   model: string;
   registrationNumber: string;
   year: number;
+  color?: string;
 }
 
 export interface MechanicProfile {
@@ -74,12 +75,14 @@ export interface MechanicProfile {
 export interface BreakdownRequest {
   id: string;
   userId: string;
+  selectedVehicleId?: string;
   vehicleIds: string[];
   locationLatitude: number;
   locationLongitude: number;
   address?: string;
   issueType: IssueType;
   description: string;
+  photoUrls?: string[];
   mechanicId?: string;
   mechanicName?: string;
   mechanicPhone?: string;
@@ -88,6 +91,7 @@ export interface BreakdownRequest {
   laborCharge?: number;
   partsCharge?: number;
   finalAmount?: number;
+  serviceStartedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -129,10 +133,11 @@ export interface MechanicVerificationRequest {
 
 export interface AddVehicleRequest {
   vehicleType: VehicleType;
-  make: string;
+  manufacturer: string;
   model: string;
   registrationNumber: string;
   year: number;
+  color?: string;
 }
 
 export interface UpdateProfileRequest {
@@ -171,4 +176,6 @@ export interface ActiveAssignment {
   customerLat: number;
   customerLng: number;
   issueType: string;
+  status?: RequestStatus;
+  serviceStartedAt?: string;
 }

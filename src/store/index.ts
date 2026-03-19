@@ -130,11 +130,19 @@ interface MechanicState {
   setActiveAssignment: (assignment: ActiveAssignment | null) => void;
 }
 
-export const useMechanicStore = create<MechanicState>((set) => ({
-  isAvailable: false,
-  currentLocation: null,
-  activeAssignment: null,
-  setAvailability: (available) => set({ isAvailable: available }),
-  updateLocation: (location) => set({ currentLocation: location }),
-  setActiveAssignment: (assignment) => set({ activeAssignment: assignment }),
-}));
+export const useMechanicStore = create<MechanicState>()(
+  persist(
+    (set) => ({
+      isAvailable: false,
+      currentLocation: null,
+      activeAssignment: null,
+      setAvailability: (available) => set({ isAvailable: available }),
+      updateLocation: (location) => set({ currentLocation: location }),
+      setActiveAssignment: (assignment) => set({ activeAssignment: assignment }),
+    }),
+    {
+      name: 'mechanic-storage',
+      storage: createJSONStorage(() => sessionStorage),
+    }
+  )
+);
