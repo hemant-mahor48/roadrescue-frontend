@@ -1,10 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { ChangeEvent, useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Link } from 'react-router-dom';
 import {
   LogOut,
   User,
   Wrench,
+  Camera,
   MapPin,
   ToggleLeft,
   ToggleRight,
@@ -32,6 +33,7 @@ interface IncomingRequest {
   customerLatitude: number;
   customerLongitude: number;
   estimatedDistance: number;
+  estimatedPayment?: number;
   issueType: string;
   timestamp: string;
 }
@@ -43,6 +45,15 @@ const MechanicDashboard = () => {
   const [incomingRequests, setIncomingRequests] = useState<IncomingRequest[]>([]);
   const [isUpdatingAvailability, setIsUpdatingAvailability] = useState(false);
   const [serviceElapsedMs, setServiceElapsedMs] = useState(0);
+  const [isCompletingRequest, setIsCompletingRequest] = useState(false);
+  const [completionForm, setCompletionForm] = useState({
+    serviceNotes: '',
+    partsUsedText: '',
+    laborCharge: '',
+    partsCharge: '',
+    beforeServicePhotos: [] as string[],
+    afterServicePhotos: [] as string[],
+  });
 
   // Tracking interval ref — cleared when mechanic stops
   const trackingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -57,6 +68,7 @@ const MechanicDashboard = () => {
         customerLatitude: n.data.customerLatitude,
         customerLongitude: n.data.customerLongitude,
         estimatedDistance: n.data.estimatedDistance,
+        estimatedPayment: n.data.estimatedPayment,
         issueType: n.data.issueType,
         timestamp: n.timestamp,
       }));
@@ -183,7 +195,7 @@ const MechanicDashboard = () => {
   // ─── Accept request → begin tracking ─────────────────────────────────────
   const handleAcceptRequest = async (request: IncomingRequest) => {
     try {
-      await requestApi.acceptRequest(request.requestId);
+      await requestApi.acceptRequest(request.requestId, request.estimatedPayment);
       toast.success('Request accepted! Starting navigation…');
       setIncomingRequests(prev => prev.filter(r => r.requestId !== request.requestId));
 
@@ -193,6 +205,8 @@ const MechanicDashboard = () => {
         customerLat: request.customerLatitude,
         customerLng: request.customerLongitude,
         issueType: request.issueType,
+        estimatedPayment: request.estimatedPayment,
+        depositHoldAmount: 200,
         status: RequestStatus.EN_ROUTE,
       };
       setActiveAssignment(assignment);
@@ -227,6 +241,79 @@ const MechanicDashboard = () => {
       toast.success('Marked as arrived. Service timer started.');
     } catch (error: any) {
       toast.error(error.response?.data?.message || 'Failed to mark arrival');
+    }
+  };
+
+  const handlePhotoUpload = async (
+    event: ChangeEvent<HTMLInputElement>,
+    field: 'beforeServicePhotos' | 'afterServicePhotos'
+  ) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    try {
+      const encoded = await Promise.all(files.map(readFileAsDataUrl));
+      setCompletionForm((current) => ({
+        ...current,
+        [field]: [...current[field], ...encoded].slice(0, 5),
+      }));
+    } catch (error) {
+      toast.error('Could not read one or more photos');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  const handleCompleteRequest = async () => {
+    if (!activeAssignment) return;
+
+    if (!completionForm.serviceNotes.trim()) {
+      toast.error('Please add service notes');
+      return;
+    }
+
+    const partsUsed = completionForm.partsUsedText
+      .split(',')
+      .map((part) => part.trim())
+      .filter(Boolean);
+
+    if (!partsUsed.length) {
+      toast.error('Please add at least one part used');
+      return;
+    }
+
+    const laborCharge = Number(completionForm.laborCharge);
+    const partsCharge = Number(completionForm.partsCharge);
+    if (Number.isNaN(laborCharge) || Number.isNaN(partsCharge)) {
+      toast.error('Please enter valid charges');
+      return;
+    }
+
+    setIsCompletingRequest(true);
+    try {
+      await requestApi.completeRequest(activeAssignment.requestId, {
+        serviceNotes: completionForm.serviceNotes.trim(),
+        partsUsed,
+        beforeServicePhotos: completionForm.beforeServicePhotos,
+        afterServicePhotos: completionForm.afterServicePhotos,
+        laborCharge,
+        partsCharge,
+      });
+
+      toast.success('Request marked as complete');
+      setActiveAssignment(null);
+      setCompletionForm({
+        serviceNotes: '',
+        partsUsedText: '',
+        laborCharge: '',
+        partsCharge: '',
+        beforeServicePhotos: [],
+        afterServicePhotos: [],
+      });
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to complete request');
+    } finally {
+      setIsCompletingRequest(false);
     }
   };
 
@@ -333,21 +420,97 @@ const MechanicDashboard = () => {
               </div>
 
               {activeAssignment.status === RequestStatus.IN_PROGRESS ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-lg bg-dark-800/60 px-4 py-3">
-                    <p className="text-xs text-dark-500">Started</p>
-                    <p className="text-sm font-semibold text-white">
-                      {activeAssignment.serviceStartedAt
-                        ? new Date(activeAssignment.serviceStartedAt).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })
-                        : 'Just now'}
-                    </p>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg bg-dark-800/60 px-4 py-3">
+                      <p className="text-xs text-dark-500">Started</p>
+                      <p className="text-sm font-semibold text-white">
+                        {activeAssignment.serviceStartedAt
+                          ? new Date(activeAssignment.serviceStartedAt).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                            })
+                          : 'Just now'}
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-dark-800/60 px-4 py-3">
+                      <p className="text-xs text-dark-500">Elapsed</p>
+                      <p className="text-sm font-semibold text-white">{formatElapsedTime(serviceElapsedMs)}</p>
+                    </div>
                   </div>
-                  <div className="rounded-lg bg-dark-800/60 px-4 py-3">
-                    <p className="text-xs text-dark-500">Elapsed</p>
-                    <p className="text-sm font-semibold text-white">{formatElapsedTime(serviceElapsedMs)}</p>
+
+                  <div className="rounded-xl border border-primary-500/20 bg-dark-900/40 p-4 space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Service Notes</label>
+                      <textarea
+                        value={completionForm.serviceNotes}
+                        onChange={(e) => setCompletionForm((current) => ({ ...current, serviceNotes: e.target.value }))}
+                        className="input-field h-24 resize-none"
+                        placeholder="Describe the work completed..."
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium mb-2">Parts Used</label>
+                      <input
+                        value={completionForm.partsUsedText}
+                        onChange={(e) => setCompletionForm((current) => ({ ...current, partsUsedText: e.target.value }))}
+                        className="input-field"
+                        placeholder="e.g. tyre, valve"
+                      />
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Labor Charge</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={completionForm.laborCharge}
+                          onChange={(e) => setCompletionForm((current) => ({ ...current, laborCharge: e.target.value }))}
+                          className="input-field"
+                          placeholder="300"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium mb-2">Parts Charge</label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={completionForm.partsCharge}
+                          onChange={(e) => setCompletionForm((current) => ({ ...current, partsCharge: e.target.value }))}
+                          className="input-field"
+                          placeholder="500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <label className="rounded-xl border border-dashed border-dark-600 p-4 text-sm text-dark-300 cursor-pointer">
+                        <span className="flex items-center gap-2 mb-2">
+                          <Camera className="w-4 h-4" />
+                          Before Photos
+                        </span>
+                        <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handlePhotoUpload(e, 'beforeServicePhotos')} />
+                        <span className="text-xs text-dark-500">{completionForm.beforeServicePhotos.length} attached</span>
+                      </label>
+                      <label className="rounded-xl border border-dashed border-dark-600 p-4 text-sm text-dark-300 cursor-pointer">
+                        <span className="flex items-center gap-2 mb-2">
+                          <Camera className="w-4 h-4" />
+                          After Photos
+                        </span>
+                        <input type="file" accept="image/*" multiple className="hidden" onChange={(e) => handlePhotoUpload(e, 'afterServicePhotos')} />
+                        <span className="text-xs text-dark-500">{completionForm.afterServicePhotos.length} attached</span>
+                      </label>
+                    </div>
+
+                    <button
+                      onClick={handleCompleteRequest}
+                      disabled={isCompletingRequest}
+                      className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {isCompletingRequest ? 'Completing Request...' : 'Mark as Complete'}
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -467,7 +630,7 @@ const MechanicDashboard = () => {
                           {getIssueTypeLabel(request.issueType)}
                         </h3>
 
-                        <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="grid gap-4 mb-4 sm:grid-cols-2 lg:grid-cols-4">
                           <div className="flex items-center space-x-2 text-dark-300">
                             <Navigation className="w-5 h-5 text-primary-500" />
                             <div>
@@ -480,6 +643,24 @@ const MechanicDashboard = () => {
                             <div>
                               <p className="text-xs text-dark-500">Est. Time</p>
                               <p className="font-semibold">~{Math.ceil(request.estimatedDistance * 3)} min</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2 text-dark-300">
+                            <CheckCircle className="w-5 h-5 text-primary-500" />
+                            <div>
+                              <p className="text-xs text-dark-500">Est. Payment</p>
+                              <p className="font-semibold">
+                                {request.estimatedPayment != null
+                                  ? `Rs ${request.estimatedPayment.toFixed(0)}`
+                                  : 'Pending'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center space-x-2 text-dark-300">
+                            <AlertCircle className="w-5 h-5 text-primary-500" />
+                            <div>
+                              <p className="text-xs text-dark-500">Deposit Hold</p>
+                              <p className="font-semibold">Rs 200</p>
                             </div>
                           </div>
                         </div>
@@ -537,3 +718,17 @@ const MechanicDashboard = () => {
 };
 
 export default MechanicDashboard;
+
+const readFileAsDataUrl = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error('Unexpected reader result'));
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('Unable to read file'));
+    reader.readAsDataURL(file);
+  });

@@ -15,10 +15,11 @@ import {
   Loader
 } from 'lucide-react';
 import { useAuthStore, useRequestStore } from '../store';
-import { requestApi } from '../services/api';
-import { RequestStatus, IssueType } from '../types';
+import { paymentApi, ratingApi, requestApi } from '../services/api';
+import { RequestStatus, IssueType, type PaymentSummary, type Rating } from '../types';
 import NotificationBell from '../components/NotificationBell';
 import TrackingPanel from '../components/TrackingPanel';
+import toast from 'react-hot-toast';
 
 const REQUEST_REFRESH_INTERVAL_MS = 15_000;
 const SERVICE_TIMER_INTERVAL_MS = 1_000;
@@ -28,6 +29,11 @@ const CustomerDashboard = () => {
   const { activeRequests, setActiveRequests } = useRequestStore();
   const [isLoading, setIsLoading] = useState(true);
   const [timerTick, setTimerTick] = useState(0);
+  const [payingRequestId, setPayingRequestId] = useState<string | null>(null);
+  const [paymentSummaries, setPaymentSummaries] = useState<Record<string, PaymentSummary>>({});
+  const [ratings, setRatings] = useState<Record<string, Rating>>({});
+  const [ratingDrafts, setRatingDrafts] = useState<Record<string, { score: number; review: string }>>({});
+  const [submittingRatingRequestId, setSubmittingRatingRequestId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchRequests();
@@ -50,6 +56,8 @@ const CustomerDashboard = () => {
       if (response.success && response.data) {
         console.log('response:', response);
         setActiveRequests(response.data);
+        await loadPaymentSummaries(response.data.map((request) => request.id));
+        await loadRatings(response.data.map((request) => request.id));
       }
     } catch (error) {
       console.error('Failed to fetch requests:', error);
@@ -68,6 +76,7 @@ const CustomerDashboard = () => {
       [RequestStatus.COMPLETED]: 'bg-green-500/20 text-green-500 border-green-500/30',
       [RequestStatus.CANCELLED]: 'bg-red-500/20 text-red-500 border-red-500/30',
       [RequestStatus.PAYMENT_PENDING]: 'bg-amber-500/20 text-amber-500 border-amber-500/30',
+      [RequestStatus.PAID]: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
     };
     return colors[status] || 'bg-gray-500/20 text-gray-500 border-gray-500/30';
   };
@@ -109,6 +118,102 @@ const CustomerDashboard = () => {
     }
 
     return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  };
+
+  const loadPaymentSummaries = async (requestIds: string[]) => {
+    const uniqueRequestIds = [...new Set(requestIds)];
+    if (uniqueRequestIds.length === 0) {
+      setPaymentSummaries({});
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      uniqueRequestIds.map(async (requestId) => {
+        const response = await paymentApi.getPaymentSummary(requestId);
+        return { requestId, paymentSummary: response.data };
+      })
+    );
+
+    const nextSummaries: Record<string, PaymentSummary> = {};
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value.paymentSummary) {
+        nextSummaries[result.value.requestId] = result.value.paymentSummary;
+      }
+    });
+
+    setPaymentSummaries(nextSummaries);
+  };
+
+  const loadRatings = async (requestIds: string[]) => {
+    const uniqueRequestIds = [...new Set(requestIds)];
+    if (uniqueRequestIds.length === 0) {
+      setRatings({});
+      return;
+    }
+
+    const results = await Promise.allSettled(
+      uniqueRequestIds.map(async (requestId) => {
+        const response = await ratingApi.getByRequestId(requestId);
+        return { requestId, rating: response.data };
+      })
+    );
+
+    const nextRatings: Record<string, Rating> = {};
+    results.forEach((result) => {
+      if (result.status === 'fulfilled' && result.value.rating) {
+        nextRatings[result.value.requestId] = result.value.rating;
+      }
+    });
+
+    setRatings(nextRatings);
+  };
+
+  const handlePayNow = async (requestId: string) => {
+    try {
+      setPayingRequestId(requestId);
+      await paymentApi.payForRequest(requestId, 'RAZORPAY');
+      toast.success('Payment processed successfully');
+      await fetchRequests();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Payment failed');
+    } finally {
+      setPayingRequestId(null);
+    }
+  };
+
+  const handleSubmitRating = async (requestId: string, mechanicId?: string) => {
+    if (!mechanicId) {
+      toast.error('Mechanic information is missing for this request');
+      return;
+    }
+
+    const draft = ratingDrafts[requestId] ?? { score: 5, review: '' };
+    if (draft.score < 1 || draft.score > 5) {
+      toast.error('Please choose a rating between 1 and 5');
+      return;
+    }
+
+    try {
+      setSubmittingRatingRequestId(requestId);
+      const response = await ratingApi.submit({
+        requestId,
+        mechanicId,
+        score: draft.score,
+        review: draft.review.trim() || undefined,
+      });
+
+      if (response.data) {
+        setRatings((current) => ({
+          ...current,
+          [requestId]: response.data!,
+        }));
+        toast.success('Rating submitted successfully');
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Failed to submit rating');
+    } finally {
+      setSubmittingRatingRequestId(null);
+    }
   };
 
   return (
@@ -214,7 +319,13 @@ const CustomerDashboard = () => {
             </div>
           ) : (
             <div className="grid gap-4">
-              {activeRequests.map((request, index) => (
+              {activeRequests.map((requestItem, index) => {
+                const paymentSummary = paymentSummaries[requestItem.id];
+                const request = { ...requestItem } as typeof requestItem & { finalAmount: number };
+                request.finalAmount =
+                  paymentSummary?.estimatedAmount ?? requestItem.finalAmount ?? 0;
+
+                return (
                 <motion.div
                   key={request.id}
                   initial={{ opacity: 0, x: -20 }}
@@ -264,6 +375,8 @@ const CustomerDashboard = () => {
                           {request.status === RequestStatus.IN_PROGRESS && 'In Progress'}
                           {request.status === RequestStatus.COMPLETED && 'Completed'}
                           {request.status === RequestStatus.CANCELLED && 'Cancelled'}
+                          {request.status === RequestStatus.PAYMENT_PENDING && 'Payment Pending'}
+                          {request.status === RequestStatus.PAID && 'Paid'}
                         </p>
                       </div>
                     </div>
@@ -278,9 +391,11 @@ const CustomerDashboard = () => {
                       </div>
                     )}
 
-                    {request.finalAmount && (
+                    {(request.finalAmount || paymentSummary?.estimatedAmount) && (
                       <div>
-                        <p className="text-xs text-dark-500">Total Amount</p>
+                        <p className="text-xs text-dark-500">
+                          {requestItem.finalAmount ? 'Total Amount' : 'Estimated Amount'}
+                        </p>
                         <p className="text-sm font-bold text-primary-400">
                           ₹{request.finalAmount.toFixed(2)}
                         </p>
@@ -289,10 +404,67 @@ const CustomerDashboard = () => {
                   </div>
 
                   {/* ─── LIVE TRACKING PANEL (EN_ROUTE only) ──────────────── */}
+                  {paymentSummary?.depositHoldAmount != null && !requestItem.finalAmount && (
+                    <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-amber-300">Deposit Hold Reserved</p>
+                          <p className="text-xs text-dark-300">
+                            Rs {paymentSummary.depositHoldAmount.toFixed(0)} is reserved while the mechanic is assigned.
+                          </p>
+                        </div>
+                        <div className="rounded-lg bg-dark-800/60 px-3 py-2 text-right">
+                          <p className="text-xs text-dark-500">Hold Status</p>
+                          <p className="text-sm font-bold text-white">
+                            {paymentSummary.depositHeld ? 'Held' : 'Released'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(requestItem.finalAmount != null || request.status === RequestStatus.PAID || request.status === RequestStatus.PAYMENT_PENDING) && paymentSummary && (
+                    <div className="mb-4 rounded-xl border border-green-500/20 bg-green-500/5 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <p className="text-sm font-semibold text-green-300">Bill Breakdown</p>
+                          <p className="text-xs text-dark-400">Review the completed service charges</p>
+                        </div>
+                        <span className="text-xs font-medium text-dark-300">
+                          {paymentSummary.status}
+                        </span>
+                      </div>
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-lg bg-dark-800/60 px-3 py-2">
+                          <p className="text-xs text-dark-500">Parts</p>
+                          <p className="text-sm font-semibold text-white">Rs {(paymentSummary.partsCharge ?? 0).toFixed(2)}</p>
+                        </div>
+                        <div className="rounded-lg bg-dark-800/60 px-3 py-2">
+                          <p className="text-xs text-dark-500">Labor</p>
+                          <p className="text-sm font-semibold text-white">Rs {(paymentSummary.laborCharge ?? 0).toFixed(2)}</p>
+                        </div>
+                        <div className="rounded-lg bg-dark-800/60 px-3 py-2">
+                          <p className="text-xs text-dark-500">Platform Fee</p>
+                          <p className="text-sm font-semibold text-white">Rs {(paymentSummary.platformFee ?? 0).toFixed(2)}</p>
+                        </div>
+                        <div className="rounded-lg bg-dark-800/60 px-3 py-2">
+                          <p className="text-xs text-dark-500">Mechanic Earning</p>
+                          <p className="text-sm font-semibold text-white">Rs {(paymentSummary.mechanicEarning ?? 0).toFixed(2)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-lg border border-dark-700 bg-dark-900/50 px-3 py-2">
+                        <p className="text-xs text-dark-500">Total</p>
+                        <p className="text-base font-bold text-primary-300">Rs {(paymentSummary.totalAmount ?? 0).toFixed(2)}</p>
+                      </div>
+                    </div>
+                  )}
+
                   {request.status === RequestStatus.EN_ROUTE && (
                     <TrackingPanel
                       requestId={request.id}
                       mechanicName={request.mechanicName}
+                      mechanicProfileImageUrl={request.mechanicProfileImageUrl}
+                      mechanicRating={request.mechanicRating}
                       customerLat={request.locationLatitude}
                       customerLng={request.locationLongitude}
                     />
@@ -341,6 +513,23 @@ const CustomerDashboard = () => {
                       </div>
                     )}
 
+                    {[RequestStatus.COMPLETED, RequestStatus.PAYMENT_PENDING].includes(request.status) && request.finalAmount && (
+                      <button
+                        onClick={() => handlePayNow(request.id)}
+                        disabled={payingRequestId === request.id}
+                        className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {payingRequestId === request.id ? 'Processing...' : `Pay Now ₹${request.finalAmount.toFixed(0)}`}
+                      </button>
+                    )}
+
+                  {request.status === RequestStatus.PAID && (
+                      <div className="flex items-center space-x-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                        <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        <span className="text-xs font-medium text-emerald-300">Paid</span>
+                      </div>
+                    )}
+
                     {request.status === RequestStatus.CANCELLED && (
                       <div className="flex items-center space-x-2 px-3 py-1 bg-red-500/10 border border-red-500/30 rounded-lg">
                         <AlertCircle className="w-4 h-4 text-red-500" />
@@ -371,8 +560,76 @@ const CustomerDashboard = () => {
                       </div>
                     )}
                   </div>
+
+                  {request.status === RequestStatus.PAID && request.mechanicId && (
+                    <div className="mt-4 rounded-xl border border-primary-500/20 bg-primary-500/5 p-4">
+                      {ratings[request.id] ? (
+                        <div>
+                          <p className="text-sm font-semibold text-primary-300">Your Rating</p>
+                          <p className="text-sm text-white mt-1">{'★'.repeat(ratings[request.id].score)}{'☆'.repeat(5 - ratings[request.id].score)}</p>
+                          {ratings[request.id].review && (
+                            <p className="text-xs text-dark-300 mt-2">{ratings[request.id].review}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div>
+                            <p className="text-sm font-semibold text-primary-300">Rate Your Mechanic</p>
+                            <p className="text-xs text-dark-400">Share your experience after payment.</p>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-dark-500 mb-1">Rating</label>
+                            <select
+                              value={ratingDrafts[request.id]?.score ?? 5}
+                              onChange={(event) =>
+                                setRatingDrafts((current) => ({
+                                  ...current,
+                                  [request.id]: {
+                                    score: Number(event.target.value),
+                                    review: current[request.id]?.review ?? '',
+                                  },
+                                }))
+                              }
+                              className="input-field"
+                            >
+                              {[5, 4, 3, 2, 1].map((score) => (
+                                <option key={score} value={score}>
+                                  {score} Star{score > 1 ? 's' : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs text-dark-500 mb-1">Review</label>
+                            <textarea
+                              value={ratingDrafts[request.id]?.review ?? ''}
+                              onChange={(event) =>
+                                setRatingDrafts((current) => ({
+                                  ...current,
+                                  [request.id]: {
+                                    score: current[request.id]?.score ?? 5,
+                                    review: event.target.value,
+                                  },
+                                }))
+                              }
+                              className="input-field h-24 resize-none"
+                              placeholder="Tell us how the service went..."
+                            />
+                          </div>
+                          <button
+                            onClick={() => handleSubmitRating(request.id, request.mechanicId)}
+                            disabled={submittingRatingRequestId === request.id}
+                            className="btn-primary text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {submittingRatingRequestId === request.id ? 'Submitting...' : 'Submit Rating'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </motion.div>
-              ))}
+                );
+              })}
             </div>
           )}
         </motion.div>

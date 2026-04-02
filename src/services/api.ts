@@ -10,6 +10,10 @@ import type {
   BreakdownRequest,
   Vehicle,
   MechanicProfile,
+  PaymentSummary,
+  Rating,
+  RatingRequest,
+  ServiceCompletionRequest,
 } from '../types';
 
 const api = axios.create({
@@ -185,13 +189,45 @@ export const requestApi = {
     return response.data;
   },
 
-  acceptRequest: async (id: string): Promise<ApiResponse<void>> => {
-    const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/accept`);
+  acceptRequest: async (id: string, estimatedPayment?: number): Promise<ApiResponse<void>> => {
+    const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/accept`, {
+      estimatedPayment,
+    });
     return response.data;
   },
 
-  completeRequest: async (id: string, details: any): Promise<ApiResponse<void>> => {
+  completeRequest: async (id: string, details: ServiceCompletionRequest): Promise<ApiResponse<void>> => {
     const response = await api.put<ApiResponse<void>>(`/v1/requests/${id}/complete`, details);
+    return response.data;
+  },
+};
+
+export const paymentApi = {
+  getPaymentSummary: async (requestId: string): Promise<ApiResponse<PaymentSummary>> => {
+    const response = await api.get<ApiResponse<PaymentSummary>>(`/v1/payments/requests/${requestId}`);
+    return response.data;
+  },
+
+  payForRequest: async (
+    requestId: string,
+    paymentGateway: 'RAZORPAY' | 'STRIPE' = 'RAZORPAY'
+  ): Promise<ApiResponse<PaymentSummary>> => {
+    const response = await api.post<ApiResponse<PaymentSummary>>(
+      `/v1/payments/requests/${requestId}/pay`,
+      { paymentGateway }
+    );
+    return response.data;
+  },
+};
+
+export const ratingApi = {
+  getByRequestId: async (requestId: string): Promise<ApiResponse<Rating | null>> => {
+    const response = await api.get<ApiResponse<Rating | null>>(`/v1/ratings/requests/${requestId}`);
+    return response.data;
+  },
+
+  submit: async (data: RatingRequest): Promise<ApiResponse<Rating>> => {
+    const response = await api.post<ApiResponse<Rating>>('/v1/ratings', data);
     return response.data;
   },
 };

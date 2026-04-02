@@ -20,6 +20,7 @@ export enum RequestStatus {
   COMPLETED = 'COMPLETED',
   CANCELLED = 'CANCELLED',
   PAYMENT_PENDING = 'PAYMENT_PENDING',
+  PAID = 'PAID',
 }
 
 export enum IssueType {
@@ -68,6 +69,12 @@ export interface MechanicProfile {
   aadhaarNumber?: string;
   aadhaarVerified: boolean;
   policeVerificationDone: boolean;
+  rating?: number;
+  totalReviews?: number;
+  totalJobs?: number;
+  acceptanceRate?: number;
+  averageResponseTimeMins?: number;
+  specialization?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -86,12 +93,18 @@ export interface BreakdownRequest {
   mechanicId?: string;
   mechanicName?: string;
   mechanicPhone?: string;
+  mechanicProfileImageUrl?: string;
+  mechanicRating?: number;
   status: RequestStatus;
   partsUsed?: string[];
   laborCharge?: number;
   partsCharge?: number;
   finalAmount?: number;
+  serviceNotes?: string;
+  beforeServicePhotos?: string[];
+  afterServicePhotos?: string[];
   serviceStartedAt?: string;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -146,6 +159,15 @@ export interface UpdateProfileRequest {
   profileImageUrl?: string;
 }
 
+export interface ServiceCompletionRequest {
+  serviceNotes: string;
+  partsUsed: string[];
+  beforeServicePhotos?: string[];
+  afterServicePhotos?: string[];
+  laborCharge: number;
+  partsCharge: number;
+}
+
 export interface LocationUpdate {
   mechanicId: string;
   latitude: number;
@@ -176,6 +198,43 @@ export interface ActiveAssignment {
   customerLat: number;
   customerLng: number;
   issueType: string;
+  estimatedPayment?: number;
+  depositHoldAmount?: number;
   status?: RequestStatus;
   serviceStartedAt?: string;
+}
+
+export interface PaymentSummary {
+  paymentId: string;
+  requestId: string;
+  estimatedAmount?: number;
+  depositHoldAmount?: number;
+  depositHeld?: boolean;
+  depositHeldAt?: string;
+  depositReleasedAt?: string;
+  laborCharge: number;
+  partsCharge: number;
+  totalAmount: number;
+  platformFee: number;
+  mechanicEarning: number;
+  paymentGateway?: string;
+  status: string;
+  paidAt?: string;
+}
+
+export interface Rating {
+  id: string;
+  requestId: string;
+  customerId: string;
+  mechanicId: string;
+  score: number;
+  review?: string;
+  createdAt: string;
+}
+
+export interface RatingRequest {
+  requestId: string;
+  mechanicId: string;
+  score: number;
+  review?: string;
 }

@@ -1,15 +1,24 @@
 import { motion } from 'framer-motion';
-import { Navigation, Clock, MapPin, Radio } from 'lucide-react';
+import { Navigation, Clock, MapPin, Radio, Star, UserCircle2 } from 'lucide-react';
 import { useTracking } from '../hooks/UseTracking';
 
 interface TrackingPanelProps {
   requestId: string;
   mechanicName?: string;
+  mechanicProfileImageUrl?: string;
+  mechanicRating?: number;
   customerLat: number;
   customerLng: number;
 }
 
-const TrackingPanel = ({ requestId, mechanicName, customerLat, customerLng }: TrackingPanelProps) => {
+const TrackingPanel = ({
+  requestId,
+  mechanicName,
+  mechanicProfileImageUrl,
+  mechanicRating,
+  customerLat,
+  customerLng,
+}: TrackingPanelProps) => {
   const { trackingData, isReceiving } = useTracking(requestId);
 
   const openMechanicInMaps = () => {
@@ -45,6 +54,30 @@ const TrackingPanel = ({ requestId, mechanicName, customerLat, customerLng }: Tr
           <span className={`text-xs font-medium ${isReceiving ? 'text-green-400' : 'text-dark-500'}`}>
             {isReceiving ? 'LIVE' : 'Waiting…'}
           </span>
+        </div>
+      </div>
+
+      <div className="mb-3 flex items-center justify-between rounded-lg bg-dark-800/50 px-3 py-2">
+        <div className="flex items-center space-x-3">
+          {mechanicProfileImageUrl ? (
+            <img
+              src={mechanicProfileImageUrl}
+              alt={mechanicName || 'Mechanic'}
+              className="h-10 w-10 rounded-full object-cover border border-dark-600"
+            />
+          ) : (
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-dark-600 bg-dark-700">
+              <UserCircle2 className="h-6 w-6 text-dark-300" />
+            </div>
+          )}
+          <div>
+            <p className="text-sm font-semibold text-white">{mechanicName || 'Assigned mechanic'}</p>
+            <p className="text-xs text-dark-400">Live route and ETA updates</p>
+          </div>
+        </div>
+        <div className="flex items-center space-x-1 rounded-lg bg-dark-900/70 px-2 py-1 text-xs text-amber-300">
+          <Star className="h-3.5 w-3.5 fill-current" />
+          <span>{mechanicRating?.toFixed(1) ?? '4.5'}</span>
         </div>
       </div>
 
